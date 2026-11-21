@@ -417,14 +417,17 @@ reported as NEW. Each was replayed and read against the code; the report prints 
 | `pin-during-a-patch-fade-lands-on-the-page-itself` (7) | **labit bug, a narrow window.** A save is patched in inside `document.startViewTransition` (`src/widget/live.ts:609`); for the cross-fade (about 250 ms; in WebKit only when the page is not scrolled) the browser hits nothing but `<html>`, and a click in that time makes a pin on `<body>` ("on the page itself, no element") |
 | `agent-text-malformed` with `what=a-broken-character`: `line=element` (8), `line=text` (4), `line=page-errors` (10, hand-built posts) | **labit bug, small.** Half an emoji (U+FFFD in the text): an attribute's value is cut at 60 inside the tag (`anchoring.ts:520`); the 40 characters before and after selected words are cut by count (`src/widget/drag.ts:175-176`, `lib/comments-api.mjs:195`); an error is cut at 200 (`local.mjs:2353`, and `live.ts:234` before it). `lib/comments-api.mjs:83` only mends a cut at a field's end |
 | `agent-text-malformed` with `what=a-line-separator` (8, hand-built posts) | **labit bug, small, only by a direct POST.** `/_lab/errors` takes control characters out (`\p{Cc}`, `local.mjs:2353`); U+2028 and U+2029 are not among them. The widget's own report squashes them (`\s+`, `live.ts:234`); a page's script that posts to `/_lab/errors` itself can put a line end, and a `## …` heading after it, into the line |
-| `drawing-read-on-another-element` with `mark=underlined` (1) | **labit bug.** A straight line is "crossed out" only when a letter stands within 3 px of its exact middle (`letterAt`, `src/widget/draw.ts:62-78`, asked at `draw.ts:152`); on a space, or the far half of a wide letter (Chinese, Japanese, Korean), it is read as "underlined", the area grows up to the line above (`draw.ts:157-163`) and the drawing lands on the list, with the item above in its words |
+| `drawing-read-on-another-element` with `mark=underlined` (1) | **labit bug, fixed 21 Nov.** A straight line is "crossed out" only when a letter stands within 3 px of its exact middle (`letterAt`, `src/widget/draw.ts`); the caret stands at the nearer edge of a letter, so on the far half of a wide one (Chinese, Japanese, Korean, an emoji; 4 px of a 16 px glyph, 1 px of an ordinary letter) it was the next letter's edge, more than 3 px off, and the line was read as "underlined": the area grew up to the line above and the drawing landed on the list. Measured with 12 wobbly (±2.5 px) strokes per line: 11/12 (Latin), 8-9/12 (CJK), 10/12 (emoji) crossed out before, 12/12 everywhere after. A second cause, also fixed: a drawing's 28 px hit area lies over its words, so a second line through the same words found the page's overlay under the point and read as "underlined" (`letterAt` lets the line through while it asks). A third is the test's: an element with only white space has no words to go through, and a line across its box is an underline of the words above it (not drawn on any more) |
 | unclear: `agent-text-holds-a-control-character` (45), `pin-inside-a-frame-is-the-framed-pages` (7), `selector-leads-nowhere` with `where=web-component` (3), `spot-changed-said-of-an-untouched-element` with `shape=hidden-twins` (1) | NUL, ESC, NEL and the like in a hand-built field reach the text (one line still); a pin in a framed page is that page's, with the frame's size as its viewport; a web component's selector matches nothing on a page with a `<main>`; a paragraph with four hidden twins is told as "may have moved" after the page changed elsewhere |
 
 Harness artifacts found on the way and fixed (none is left in the run): errors thrown by a function the test had put
 into the page were hidden by WebKit ("Script error."); a drag that began on an earlier pin moved that pin, one that
 began on the widget's bar made a plain pin, a press on an earlier drawing wrote a reply; D and Shift never reached a
 frame without the focus; a pin moved by a step was compared with its first hand-off; `…n1` matched `…n10` in the
-errors; a space at the end of a cut text; a click's place rounded to a whole pixel.
+errors; a space at the end of a cut text; a click's place rounded to a whole pixel; a line drawn on the page after a pin inside an
+`<iframe>` (the frame still had the focus, so D reached only the frame's widget and the line was a plain box: `context-drawing-missing`;
+the draw step now takes the focus to the page it draws in); a line through the empty box of a white-space element
+(`drawing-read-on-another-element`, and the phone's `pin-drawn-off-its-element` that followed from the area being the list's).
 
 **Limits.** A phone is a phone's viewport in a desktop engine, its held finger made of pointer events put into the
 page (`isTrusted` false). Pins inside a frame are made by click and by area only (keys go to the page that has the
@@ -448,6 +451,8 @@ there (anything about the page's own elements), and the raw devices' rules are c
 
 In a quarter of the agent-sync cases the phone is "held": each answer and live message reaches it up to 15, 40 or
 80 ms late, each by its own amount, as on a slow wifi. Failures that need that carry `held=answers-held`.
+A device asks `/_lab/api/changes` one at a time, in the order asked, as the widget does; `TORTURE_SERIAL_CHANGES=0` makes it
+ask them all at once and apply each answer as it arrives (the widget's old way), to see what asking in order fixes.
 
 ## Known bugs and their signatures
 

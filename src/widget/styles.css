@@ -115,6 +115,7 @@ button.pin.dragging { cursor: grabbing; transform: scale(1.1); opacity: 1; box-s
 .ink path { fill: none; stroke: var(--lab-pen, var(--_red)); stroke-width: 3px; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
 /* A fingertip wide (Leo's pick E, 20 Nov): 16 px was easy to miss on a phone. */
 .ink path.hit { stroke: transparent; stroke-width: 28px; pointer-events: stroke; cursor: pointer; }
+:host([data-lab-probe]) .ink path.hit { pointer-events: none; } /* draw.ts letterAt: asking the page what is under a point, the line is let through */
 .ink.live { left: 0; top: 0; width: 1px; height: 1px; }
 button.pin.ink, button.pin.ink:is(:hover, :active, .open) { margin: 0; background: none; box-shadow: none; outline: 0; color: transparent; pointer-events: none; transform: none; scale: none; }
 .pin.ink > :not(svg), button.pin.ink::before, .pin.ink::after { display: none; }

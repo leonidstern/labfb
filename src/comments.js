@@ -444,11 +444,15 @@ import { bindKeys } from './widget/keys.ts';
   };
   // Only what changed since comments version `since` (local labs): a reply costs ~1 KB, not the page's whole list.
   // Anything odd (a gap, an error, an old lab) falls back to the whole list.
-  async function loadChanges(since) {
+  // One at a time, in the order asked: two answers on the way (wifi) may arrive the other way round, and the older would
+  // then overwrite what the newer one brought (a pin resolved, then reopened, shown resolved; a deleted pin back).
+  let changesChain = Promise.resolve();
+  const loadChanges = (since) => (changesChain = changesChain.then(() => changesSince(since)));
+  async function changesSince(since) {
     try {
       const url = new URL('/_lab/api/changes', new URL(API, location.href));
       url.search = String(new URLSearchParams({ page: S.page, since: String(since) }));
-      const res = await fetch(url, { cache: 'no-store' });
+      const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(15000) }); // a hung ask must not hold the ones behind it
       const data = res.ok ? await res.json() : { full: true };
       if (data.full || !S.loaded) return load();
       const gone = new Set(data.del);
@@ -1764,7 +1768,8 @@ import { bindKeys } from './widget/keys.ts';
       const B = /** @type {any} */ (window).__labBoard;
       const box = a.frame && a.fx !== undefined ? B?.box?.(a.frame) : null;
       const size = box && (B.size?.(a.frame) || { w: box.offsetWidth, h: box.offsetHeight });
-      const share = size?.w && size.h ? { x: a.fx / size.w, y: (a.fy || 0) / size.h } : null;
+      // (an area's pin is at the corner where the drag ended)
+      const share = size?.w && size.h ? { x: (a.fx + (a.pinX ? (a.zw || 0) * size.w : 0)) / size.w, y: ((a.fy || 0) + (a.pinY ? (a.zh || 0) * size.h : 0)) / size.h } : null;
       held = holdPin(pin, Boolean(share), share ? box : null, left, top, share || undefined);
     } else {
       const node = moved ? null : findTarget(a);
