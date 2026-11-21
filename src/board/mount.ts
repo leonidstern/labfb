@@ -770,7 +770,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const t0 = performance.now();
       const step = (now: number) => {
         if (signal.aborted) return;
-        const k = ms ? 1 : Math.min(1, (now - t0) / ms);
+        const k = ms ? Math.min(1, (now - t0) / ms) : 1;
         go({ ...cam, y: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2) }, false, true);
         nudging = k < 1 ? requestAnimationFrame(step) : 0;
       };
