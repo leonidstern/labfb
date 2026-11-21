@@ -28,7 +28,7 @@ import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
-import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, hurryGlide, leave, letGo, revealDraft, roomFor, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, liftedDraft, revealDraft, roomFor, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
@@ -970,7 +970,9 @@ import { bindKeys } from './widget/keys.ts';
         const key = sheet && (S.draft ? 'draft' : S.openId || (S.chatOpen ? 'chat' : ''));
         if (sheet && key !== S.sheetKey) fromTap(sheet);
         S.sheetKey = key;
-        if (appear && S.draft) requestAnimationFrame(revealDraft); // its pin above the sheet, before the keyboard
+        // Its pin above the sheet, before the keyboard (sheets.ts): made by a hold, now, while the finger is still down.
+        if (appear && S.draft && S.pinnedByHold) revealDraft();
+        else if (appear && S.draft) requestAnimationFrame(() => revealDraft(true));
       }
       if (!isTrying()) markQuote(quoted); // a tried choice wears the green itself
       S.quoted = quoted;
@@ -1645,10 +1647,9 @@ import { bindKeys } from './widget/keys.ts';
     if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
     // The cursor goes in here, in the lift itself: a real iPhone opens its keyboard only for a focus made in the touch (one
     // made a moment later, from a timer, opened it in the simulator and not on Leo's phone: "its not in focus now", 21 Nov).
-    // The page may still be gliding the pin into view (sheets.ts revealDraft): it hurries, to be there before the keyboard is.
     S.pinnedByHold = false;
-    hurryGlide();
     box?.focus({ preventScroll: true });
+    liftedDraft(); // (the page was put where the pin shows above the sheet as the pin appeared: sheets.ts revealDraft)
   }, { capture: true, passive: false });
   // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
   // lift isn't this hold's.
@@ -1979,6 +1980,9 @@ import { bindKeys } from './widget/keys.ts';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
   // up at the end of the slide; it shrinks away as you scroll back up.
   pageStyle.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
+  // Phones: the page is scrolled in one step for a new comment's pin and drawn where it was, then let go as the keyboard
+  // comes (sheets.ts revealDraft): its own blocks, not what it holds to the screen itself, nor the widget or a board's view.
+  pageStyle.textContent += 'html.lab-shift body > :not([data-lab-comments], [data-lab-board-view], [data-lab-still]) { translate: 0 var(--lab-shift, 0px) !important; transition: translate var(--lab-shift-t, 0s) var(--lab-shift-e, ease) !important; }';
   addEventListener('scroll', () => {
     if (!document.documentElement.classList.contains('lab-room') || host.hasAttribute('data-sheet')) return;
     roomFor(scrollY, true);

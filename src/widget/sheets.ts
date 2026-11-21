@@ -102,9 +102,13 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   W.scrim.style.transition = 'none';
   W.scrim.style.opacity = fade;
   // The keyboard goes now, with the sheet; after a send, once the card has gone (see holdKeyboard).
-  const letKeysGo = () => (W.root.activeElement as HTMLElement | null)?.blur();
+  // …and the page starts back to where it was with it (backFromReveal).
+  const letKeysGo = () => ((W.root.activeElement as HTMLElement | null)?.blur(), node.classList.contains('float') && backFromReveal());
   if (sent) setTimeout(letKeysGo, dur);
   else letKeysGo();
+  // A comment dropped unsent: its pin goes now, not when the sheet has finished sliding away (it stood there alone for
+  // 0.3 s; Leo, 21 Nov: "if not placed comment it dissappears with delay").
+  if (!sent && node.classList.contains('float')) (W.root.querySelector('.pin.draft') as HTMLElement | null)?.style.setProperty('opacity', '0');
   // Back into its pin where the pin is now (the page scrolled it into view after the tap); the list and the chat back
   // to where they were tapped open.
   const pin = sent ? null : W.root.querySelector(node.classList.contains('card') ? '.pin.open' : node.classList.contains('float') ? '.pin.draft' : 'none');
@@ -168,68 +172,126 @@ export function slideAway(node, close, ms = 0, speed = 0) {
   });
 }
 
-// A new comment's pin stays in sight: as its sheet opens, a pin the sheet would cover once the keyboard is up scrolls up
-// into the middle of what's free above it, as goTo does for a thread (a pin low on the page went under the sheet: you
-// couldn't see what you were commenting on, 16 Nov). Now, before the keyboard: scrolled with the keyboard up, Safari pans
-// its view instead and the sheet landed 126 px low, behind the keyboard's bar.
-export function revealDraft() {
+// A new comment's pin stays in sight: a pin the sheet would cover once the keyboard is up comes up into the middle of
+// what's free above it (a pin low on the page went under the sheet: you couldn't see what you were commenting on, 16 Nov).
+// One move, in the frames the keyboard and the sheet rise in (Leo, 21 Nov, on his phone: "pin placement opening keyboard
+// and shifting everything not very smooth": the page glided first, under the finger, and the keyboard came after or in
+// the middle of it). The page has to be scrolled before the cursor goes in: scrolled after, iOS pans the screen instead of
+// the page and the sheet is thrown about (its top went 331, 182, 234, 197, 267: iOS 27 simulator); scrolled in the lift
+// itself, just before the focus, iOS never took the scroll and the keyboard came up over the sheet. So, as the pin appears
+// under the finger (the hold): the page is put at its new place in one step and drawn where it was (shifted back by as
+// much, --lab-shift on the page's own blocks and on the pins), and when the keyboard starts up that shift runs out, as
+// the sheet's own rise does. Nothing is scrolled while the keyboard is there, and nothing is seen to move before it.
+let gen = 0; // each shift is the last one's end
+const shifted = (px: number, ms: number) => {
+  const de = document.documentElement;
+  gen++;
+  de.style.setProperty('--lab-shift-t', `${ms}ms`);
+  de.style.setProperty('--lab-shift-e', getComputedStyle(W.host).getPropertyValue('--_ease-settle').trim() || 'ease');
+  de.style.setProperty('--lab-shift', `${px}px`);
+  de.classList.add('lab-shift');
+  W.host.setAttribute('data-shift', '');
+};
+const unshifted = () => {
+  const de = document.documentElement;
+  gen++;
+  de.classList.remove('lab-shift');
+  for (const k of ['--lab-shift', '--lab-shift-t', '--lab-shift-e']) de.style.removeProperty(k);
+  W.host.removeAttribute('data-shift');
+  for (const n of document.querySelectorAll('[data-lab-still]')) n.removeAttribute('data-lab-still');
+};
+const keysUp = () => Boolean(W.vv && innerHeight - W.vv.height > 60);
+let landing: (() => void) | null = null; // the page's way back, still to be finished (backFromReveal)
+let letGoShift: (() => void) | null = null; // lets the shift run out (the keyboard is coming, or did not come)
+/** The finger has lifted and the cursor is in the box: should no keyboard come, the page takes its new place anyway. */
+export const liftedDraft = () => letGoShift && setTimeout(letGoShift, 450);
+/** glide: the box takes the cursor by itself (no hold, no lift to wait for): the page glides there, as it always did. */
+export function revealDraft(glide = false) {
   const float: HTMLElement | null = W.root.querySelector('.float:not(.out)');
   const pin: HTMLElement | null = W.root.querySelector('.pin.draft');
-  if (!W.coarse || !float || !pin || !W.vv) return;
+  if (!W.coarse || !float || !pin || !W.vv || W.S.revealed) return;
   if (pin.style.position === 'fixed') return; // a board's pin is held to the screen: scrolling the page under the board moves nothing but the page (the board's camera brings the pin up, overlay.ts)
+  landing?.();
   const up = innerHeight - W.vv.height;
   const keys = up > 60 ? up : W.S.kbSeen || Math.round(innerHeight * 0.42); // the keyboard it will have
   const sheetTop = innerHeight - keys - float.offsetHeight - 8; // where it comes to rest, not where it is growing now
   const p = pin.getBoundingClientRect();
   const free = 56; // below the status bar
   if (!(p.top < free || p.bottom > sheetTop - 16)) return;
-  const to = Math.max(0, scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
-  W.S.revealed = { from: scrollY, to }; // where you were: the page goes back there once the comment is sent or dropped (backFromReveal)
-  scrollPageTo(to, 300); // brisk: the keyboard comes with the lift, and the page should be there first (hurryGlide)
+  const from = scrollY;
+  const to = Math.max(0, from + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
+  W.S.revealed = { from, to }; // where you were: the page goes back there once the comment is sent or dropped (backFromReveal)
+  if (glide) return scrollPageTo(to);
+  roomFor(to);
+  scrollTo({ top: to, behavior: 'instant' });
+  const by = scrollY - from;
+  if (W.still.matches || Math.abs(by) < 2) return;
+  // What the page itself holds to the screen (a bar of its own, at the top of body) is not shifted: it did not scroll.
+  for (const n of Array.from(document.body.children)) if (n !== W.host && /fixed|sticky/.test(getComputedStyle(n).position)) n.setAttribute('data-lab-still', '');
+  shifted(by, 0);
+  void document.body.offsetHeight; // drawn where it was, before anything is let go
+  const mine = gen;
+  const go = () => {
+    if (letGoShift !== go) return;
+    letGoShift = null;
+    W.vv.removeEventListener('resize', keys2);
+    if (gen !== mine) return; // sent or dropped already
+    shifted(0, W.ms('slow'));
+    const end = gen;
+    setTimeout(() => gen === end && unshifted(), W.ms('slow') + 60);
+  };
+  const keys2 = () => keysUp() && go();
+  letGoShift = go;
+  W.vv.addEventListener('resize', keys2);
+  if (keysUp()) go(); // it is up already (a new comment while another field had it)
 }
 
-// After a new comment's sheet has gone, the page scrolls back to where it was before revealDraft moved it, unless you
-// scrolled it yourself since (you went somewhere: stay there).
+// A new comment's sheet is going (sent, dropped, swiped away): the page goes back to where it was before revealDraft moved
+// it, as the keyboard goes down, the same way round: its blocks slide back first (the scroll stays, nothing is scrolled
+// while a keyboard is there), and once the keyboard has gone the page is put there in one step, drawn as it already is.
 export function backFromReveal() {
   const r = W.S.revealed;
   W.S.revealed = null;
   // 320: the keyboard's pan moves the page too (about 300 px, 21 Nov simulator: it was left 382 down from 425); a sheet holds the page still
   // otherwise, so what moved it is that pan, not a hand.
   if (!(r && W.coarse && Math.abs(scrollY - r.to) < 320)) return;
-  // Once the keyboard has gone: scrolled while it was still going down, iOS panned the screen under the scroll (up to the
-  // keyboard's whole height, 303 px, for a frame or two) and the page jumped down before it came to rest (iOS 27
-  // simulator, 21 Nov). Not if another sheet has opened by then.
-  const up = () => Boolean(W.vv && innerHeight - W.vv.height > 60);
-  let went = false;
-  const go = () => {
-    if (went) return;
-    went = true;
-    clearTimeout(t);
-    W.vv?.removeEventListener('resize', gone);
-    if (!W.S.revealed && !W.host.hasAttribute('data-sheet')) scrollPageTo(r.from);
+  const by = scrollY - r.from;
+  if (W.still.matches || Math.abs(by) < 2) return scrollPageTo(r.from);
+  shifted(by, W.ms('slow'));
+  const mine = gen;
+  const at = performance.now() + W.ms('slow') + 30;
+  let landed = false;
+  const land = (now = false) => {
+    if (landed || (!now && (keysUp() || performance.now() < at))) return;
+    landed = true;
+    landing = null;
+    clearTimeout(t1);
+    clearTimeout(t2);
+    W.vv?.removeEventListener('resize', check);
+    scrollTo({ top: r.from, behavior: 'instant' });
+    if (gen === mine) unshifted();
   };
-  const gone = () => !up() && go();
-  const t = setTimeout(go, 800);
-  if (!up()) return go();
-  W.vv.addEventListener('resize', gone);
+  const check = () => land();
+  landing = () => land(true);
+  const t1 = setTimeout(check, W.ms('slow') + 40);
+  const t2 = setTimeout(() => land(true), 1500);
+  W.vv?.addEventListener('resize', check);
 }
 
 // Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
 // part a phone's sheet leaves free above it: the page gets room below its end while the sheet is open (--lab-room).
-export function scrollPageTo(top: number, cap = 0) {
+export function scrollPageTo(top: number) {
   if (W.coarse) roomFor(top);
   const to = Math.max(0, top);
   cancelAnimationFrame(glideId);
-  glideTo = null;
-  if (W.still.matches || cap < 0 || Math.abs(to - scrollY) < 2) return scrollTo({ top: to, behavior: 'auto' });
+  if (W.still.matches || Math.abs(to - scrollY) < 2) return scrollTo({ top: to, behavior: 'auto' });
   // Its own glide, ease in and out and longer for a longer way: the browser's smooth scroll took 0.28 s for 500 px, which
   // reads as a jump (Leo, 21 Nov: "scrolling position to pin can be smoother"). A touch or a wheel hands the page back.
   const from = scrollY;
   // Up to 0.9 s: at 0.56 s a pin 2700 px away went by at 237 px a frame, which is a jump too (iOS 27 simulator, 21 Nov).
-  const ms = cap ? Math.min(cap, 200 + Math.abs(to - from) * 0.35) : Math.min(900, 260 + Math.abs(to - from) * 0.4);
+  const ms = Math.min(900, 260 + Math.abs(to - from) * 0.4);
   const t0 = performance.now();
-  glideTo = to;
-  const stop = () => (cancelAnimationFrame(glideId), (glideTo = null), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
+  const stop = () => (cancelAnimationFrame(glideId), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
   addEventListener('touchstart', stop, { passive: true });
   addEventListener('wheel', stop, { passive: true });
   const step = (now: number) => {
@@ -241,19 +303,6 @@ export function scrollPageTo(top: number, cap = 0) {
   glideId = requestAnimationFrame(step);
 }
 let glideId = 0;
-let glideTo: number | null = null; // where the glide under way is going
-// The keyboard is coming (the lift after a hold put the cursor in a new comment's box) and the page is still gliding its
-// pin into view: it gets there in a few frames, and at once if the keyboard is there first. Scrolled with the keyboard up,
-// iOS pans the screen instead of the page, and the sheet is thrown about (a lift 0.1 s after the pin: the page was left
-// 101 px off and the sheet's top went 331, 182, 234, 197, 267; iOS 27 simulator, 21 Nov).
-export function hurryGlide() {
-  if (glideTo == null) return;
-  const to = glideTo;
-  const keys = () => W.vv && innerHeight - W.vv.height > 60 && (W.vv.removeEventListener('resize', keys), glideTo === to && scrollPageTo(to, -1));
-  W.vv?.addEventListener('resize', keys);
-  setTimeout(() => W.vv?.removeEventListener('resize', keys), 1000);
-  scrollPageTo(to, 90);
-}
 // Room below the page's end, so that it can scroll to `top` on a phone. The page's own height is html's box when the page is
 // shorter than the screen: scrollHeight is never less than the screen's height, so a short page read as tall as the screen,
 // got 283 px of room where it needed 817, and could not scroll at all: the pin stayed under the sheet until the keyboard
