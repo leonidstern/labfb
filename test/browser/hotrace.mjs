@@ -16,6 +16,7 @@ const w = (f, t) => fs.writeFileSync(path.join(DIR, f), t);
 w('index.html', page('hello'));
 w('s.css', 'main{color:rgb(255,0,0);background:url(bg.svg)}');
 w('bg.svg', svg(10));
+w('data.json', '{"n":1}');
 w('labit.json', JSON.stringify({ port: PORT }));
 const server = startLab(DIR, labEnv());
 await labUp(B);
@@ -49,6 +50,22 @@ try {
       await sleep(1500);
       check(eng, 'a page saved with its stylesheet is patched, not reloaded', loads === 0 && (await pg.textContent('#m')) === 'hello again', `loads ${loads}`);
       check(eng, '… and its stylesheet is the new one', (await color()) === 'rgb(0, 128, 0)' && (await links()) === 1, `${await color()}, ${await links()} links`);
+
+      // A picture only a stylesheet shows can't be swapped (the browser keeps its copy): the page loads again. A file the page never loaded
+      // (a package.json, a note) leaves it alone, and so does a data file it didn't fetch.
+      loads = 0;
+      w('package.json', '{"a":1}');
+      w('notes.txt', 'one');
+      await sleep(1200);
+      check(eng, 'a file the page never loaded leaves it alone', loads === 0, `loads ${loads}`);
+      w('bg.svg', svg(77));
+      await sleep(1800);
+      check(eng, 'a picture only a stylesheet shows loads the page again', loads === 1, `loads ${loads}`);
+      await pg.evaluate(() => fetch('/data.json').then((r) => r.text()));
+      loads = 0;
+      w('data.json', '{"n":2}');
+      await sleep(1500);
+      check(eng, 'a data file the page fetched loads it again', loads === 1, `loads ${loads}`);
     } finally {
       await browser.close();
     }

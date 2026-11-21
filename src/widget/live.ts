@@ -201,17 +201,18 @@ export function startLive() {
     for (const n of [who, W.chatBtn, W.root.querySelector('.more')]) n?.addEventListener('click', take, { capture: true });
     // Files a save can mean for this page: the page itself, anything it loads, and data it may fetch as it runs.
     // Everything else -- a README, another page's script, the project's own server code -- leaves it alone.
-    const FETCHED = /\.(json|wasm|csv|tsv|xml|txt|map|woff2?)$/i;
+    performance.setResourceTimingBufferSize(3e3); // the page's own list of what it loaded (a fetch, a module, a worker): 250 is too few for a big app
+    const loaded = (p, by = /./) => performance.getEntriesByType('resource').some((e: any) => by.test(e.initiatorType) && samePath(e.name, [p]));
     const tidy = (u) => decodeURIComponent(u).replace(/\/index\.html?$/i, '/').replace(/\.html?$/i, '').toLowerCase();
     const usedHere = (p) => {
-      if (tidy(location.pathname) === tidy(p) || FETCHED.test(p)) return true;
+      if (tidy(location.pathname) === tidy(p)) return true;
       for (const n of document.querySelectorAll('script[src], link[href], iframe[src], object[data], embed[src]')) {
         if (W.host.contains(n)) continue;
         const v = n.getAttribute('src') || n.getAttribute('href') || n.getAttribute('data');
         if (v && samePath(v.split('#')[0], [p])) return true;
       }
-      // Anything else the page fetched while it ran: an ES module's imports, a worker, a script a script added.
-      return performance.getEntriesByType('resource').some((e) => samePath(e.name, [p]));
+      // Anything else the page fetched while it ran: an ES module's imports, a worker, a script a script added, its data.
+      return loaded(p);
     };
     // A page with no tab icon of its own gets labit's: only in a local lab (this block), only when the page names
     // none and the project serves no /favicon.ico (a dev server may answer any path with its HTML, so the type counts).
@@ -322,6 +323,7 @@ export function startLive() {
       const own = (l: HTMLLinkElement) => decodeURIComponent(new URL(l.href, location.href).pathname);
       const named = links.filter((l) => files.includes(own(l)));
       // A saved file no link names is pulled in by @import: every sheet is swapped then, not only the ones named.
+      for (const s of document.querySelectorAll('style')) if (/@import/.test(s.textContent) && !W.host.contains(s)) s.textContent += ''; // an @import in a style block is read again
       for (const link of named.length && files.every((f) => named.some((l) => own(l) === f)) ? named : links) {
         const url = new URL(link.href, location.href);
         url.searchParams.set('lab-v', Date.now().toString(36));
@@ -340,11 +342,9 @@ export function startLive() {
         link.after(next);
       }
     };
-    const fresh = (u) => {
-      const url = new URL(u, location.href);
-      url.searchParams.set('lab-v', Date.now().toString(36));
-      return url.href;
-    };
+    // The address as the file wrote it, with a version on the end: a later patch of the page knows it for the same one.
+    const plain = (u) => u.replace(/[?&]lab-v=\w+/g, '');
+    const fresh = (u) => plain(u) + (plain(u).includes('?') ? '&' : '?') + 'lab-v=' + Date.now().toString(36);
     const samePath = (u, paths) => {
       try {
         const url = new URL(u, location.href);
@@ -357,9 +357,9 @@ export function startLive() {
     // icon). With no paths: every picture. Returns how many it swapped (none: it's a CSS background, so the stylesheets are).
     const swapImages = (paths) => {
       let hit = 0;
-      for (const n of document.querySelectorAll('img, source, video[poster], image, use, link[rel~="icon"]')) {
+      for (const n of document.querySelectorAll('img, input, object, embed, source, video[poster], image, use, link[rel~="icon"]')) {
         if (W.host.contains(n)) continue;
-        for (const attr of ['src', 'href', 'poster', 'xlink:href']) {
+        for (const attr of ['src', 'href', 'data', 'poster', 'xlink:href']) {
           const v = n.getAttribute(attr);
           if (!v || !samePath(v.split('#')[0], paths)) continue;
           // The new file is loaded and decoded first, then shown: the picture never blinks empty.
@@ -390,10 +390,11 @@ export function startLive() {
         } catch {
           continue; // another site's stylesheet
         }
-        for (const r of rules || []) {
+        const all = (rs, out = []) => { for (const r of rs || []) { out.push(r); try { all(r.styleSheet ? r.styleSheet.cssRules : r.cssRules, out); } catch {} } return out; };
+        for (const r of all(rules)) {
           if (!(r instanceof CSSFontFaceRule)) continue;
           const src = r.style.getPropertyValue('src');
-          const base = sheet.href || location.href;
+          const base = r.parentStyleSheet.href || location.href;
           if (!/url\(/.test(src) || ![...src.matchAll(/url\(["']?([^"')]+)/g)].some((m) => samePath(new URL(m[1], base).href, paths))) continue;
           const again = src.replace(/url\(["']?([^"')]+)["']?\)/g, (all, u) => (samePath(new URL(u, base).href, paths) ? `url("${fresh(new URL(u, base).href)}")` : all));
           const d = (k) => r.style.getPropertyValue(k) || undefined;
@@ -470,7 +471,7 @@ export function startLive() {
         o.removeAttribute(name);
         hit(o);
       }
-      for (const { name, value } of Array.from(n.attributes as NamedNodeMap)) if (o.getAttribute(name) !== value) {
+      for (const { name, value } of Array.from(n.attributes as NamedNodeMap)) if (!o.hasAttribute(name) || plain(o.getAttribute(name)) !== value) {
         o.setAttribute(name, value);
         hit(o);
       }
@@ -524,6 +525,11 @@ export function startLive() {
           for (const o of olds.slice(news.length)) o.remove();
           for (const { name, value } of Array.from(doc.body.attributes)) if (document.body.getAttribute(name) !== value) document.body.setAttribute(name, value);
           for (const { name } of Array.from(document.body.attributes)) if (!doc.body.hasAttribute(name)) document.body.removeAttribute(name);
+          const H = document.documentElement;
+          for (const { name, value } of Array.from(doc.documentElement.attributes)) {
+            const v = name === 'class' ? [value, ...[...H.classList].filter((c) => c.startsWith('lab-'))].join(' ') : value;
+            if (name !== 'style' && H.getAttribute(name) !== v) H.setAttribute(name, v);
+          }
           aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
           // The elements that changed are outlined for a moment (not for someone who asked for less motion).
           if (!matchMedia('(prefers-reduced-motion: reduce)').matches) for (const e of [...touched].slice(0, 12)) if (e?.isConnected && e !== document.body) e.animate?.([{ outline: '2px solid Highlight' }, { outline: '2px solid transparent' }], 1200);
@@ -563,8 +569,10 @@ export function startLive() {
       // Only a save of this page's own file patches it (another page saved in the lab changes nothing here).
       const here = decodeURIComponent(location.pathname).replace(/\/$/, '/index').replace(/\.html?$/i, '').toLowerCase();
       if (of('html').some((p) => !p || p.replace(/\.html?$/i, '').toLowerCase() === here)) morphPage();
+      else if (of('html').some((p) => loaded(p, /fetch|xml/))) reload(); // a page a script fetched
       if (of('css').length) swapCss(of('css'));
-      if (of('img').length && !swapImages(of('img'))) swapCss([]);
+      // A picture only a stylesheet shows (a CSS background) can't be swapped: the browser keeps its copy of the picture, so the page reloads.
+      if (of('img').length && !swapImages(of('img')) && of('img').some((p) => loaded(p))) reload();
       if (of('font').length) reloadFonts(of('font'));
     };
     // One live stream per browser for this lab, shared by its tabs: the tab holding the lock "labit-live" (locks and
