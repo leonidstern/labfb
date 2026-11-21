@@ -129,12 +129,12 @@ export function sendPacked(req: IncomingMessage, res: ServerResponse, file: stri
   res.end(req.method === 'HEAD' ? undefined : out);
 }
 // One file, with byte ranges (video seeking). A bad range gets 416, never a crash.
-export function sendFile(req: IncomingMessage, res: ServerResponse, file: string): void {
+export function sendFile(req: IncomingMessage, res: ServerResponse, file: string, extra?: Record<string, string>): void {
   const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
   const stat = fs.statSync(file);
   const size = stat.size;
   const etag = etagOf(stat);
-  const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': /\.(css|m?js)$/i.test(file) ? 'no-store' : 'no-cache', etag }; // no-store: Back shows what is on disk, not a script from the cache
+  const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': /\.(css|m?js)$/i.test(file) ? 'no-store' : 'no-cache', etag, ...extra }; // no-store: Back shows what is on disk, not a script from the cache
   if (req.headers['if-none-match'] === etag) return void res.writeHead(304, { 'cache-control': 'no-cache', etag }).end();
   const enc = !req.headers.range && size > 1024 && size < 8e6 && SQUEEZE.test(type) ? encodingFor(req) : '';
   if (enc) {
