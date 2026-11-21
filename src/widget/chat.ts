@@ -119,7 +119,7 @@ export function drawChat() {
         draftKey: `lab-typing:${W.S.page}:chat`,
         onSubmit: async (name, text) => {
           const { comment } = await W.send({ name, text, anchor: { kind: 'page', width: innerWidth, height: innerHeight, dpr: devicePixelRatio || 1 } });
-          W.S.comments.push(comment);
+          W.addComment(comment);
           W.markSeen([comment]);
           box.scrollTop = box.scrollHeight;
           W.S.stayAtEnd?.(box);
