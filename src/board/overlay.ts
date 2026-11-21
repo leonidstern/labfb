@@ -20,7 +20,7 @@ let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the 
 // the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
 // --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-:host{all:initial!important;opacity:var(--bv-o,1)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+:host{all:initial!important;opacity:var(--bv-o,1)!important;transform:translateY(var(--bv-pan,0px))!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
 .bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
 .bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
@@ -145,6 +145,63 @@ export function show(name: string, o: Opts) {
   let at = view.getBoundingClientRect();
   const ro = new ResizeObserver(() => (at = view.getBoundingClientRect()));
   ro.observe(view);
+  // A phone's keyboard: iOS pans what the screen shows up by its height (visualViewport.offsetTop) and scrolls the page
+  // under the fixed view, so the view slid up with it and came back down once the comment was sent (Leo, 21 Nov: "placing
+  // pin shifts canvas when opening keyboard", "canvas still shifts after i drop comment"). The view goes down by the pan
+  // instead, so the board holds its place on the screen; a draft pin that the sheet or the keyboard would cover is
+  // brought above them by the camera (and the camera goes back when the keyboard goes). A half view whose top is under
+  // what the keyboard leaves keeps sliding: there is nothing of it to hold.
+  const vv = window.visualViewport;
+  let pan = 0;
+  let nudged = 0;
+  let scrollFrom = -1; // where the page was when the keyboard came up
+  let loop = 0;
+  let quiet = 0;
+  const follow = () => {
+    if (!vv || !matchMedia('(pointer: coarse)').matches) return;
+    const typing = Math.abs(vv.scale - 1) < 0.01 && innerHeight - vv.height > 60; // the keyboard is up
+    if (typing && scrollFrom < 0) scrollFrom = scrollY;
+    else if (!typing && scrollFrom >= 0 && !vv.offsetTop) {
+      if (Math.abs(scrollY - scrollFrom) > 1) scrollTo({ top: scrollFrom, behavior: 'instant' as ScrollBehavior }); // the page iOS scrolled for the keyboard goes back
+      scrollFrom = -1;
+    }
+    const viewTop = innerHeight - view.offsetHeight; // where the view starts when nothing is panned
+    const next = typing && viewTop < vv.height - 160 ? Math.round(vv.offsetTop) : !typing ? Math.round(vv.offsetTop) : 0;
+    if (next !== pan) {
+      pan = next;
+      view.style.setProperty('--bv-pan', `${pan}px`);
+      const host = document.querySelector<HTMLElement>('[data-lab-comments]');
+      host?.style.setProperty('--lab-pan', `${pan}px`); // the board's pins and its draft move down with the view (styles.css)
+      host?.toggleAttribute('data-pan', pan > 0);
+      at = view.getBoundingClientRect();
+      quiet = 0;
+    }
+    const sr = document.querySelector('[data-lab-comments]')?.shadowRoot;
+    const pin = sr?.querySelector('.pin.draft')?.getBoundingClientRect();
+    const sheet = sr?.querySelector('.float:not(.out)')?.getBoundingClientRect();
+    if (typing && pin && sheet && !nudged && sheet.top > 0) {
+      const over = pin.bottom + 16 - sheet.top;
+      const dy = over > 0 ? -over - 24 : pin.top < 56 ? 56 - pin.top : 0;
+      if (dy) nudged = board.api.nudge(dy);
+    } else if (!typing && nudged) {
+      board.api.nudge(-nudged);
+      nudged = 0;
+    }
+    moved();
+  };
+  // iOS pans the screen in steps that come as events only now and then: the view follows every frame while it moves.
+  const tick = () => {
+    const before = pan;
+    follow();
+    quiet = before === pan ? quiet + 1 : 0;
+    loop = quiet < 20 ? requestAnimationFrame(tick) : 0;
+  };
+  const watch = () => {
+    quiet = 0;
+    loop ||= requestAnimationFrame(tick);
+  };
+  vv?.addEventListener('resize', watch);
+  vv?.addEventListener('scroll', watch);
   // A board that is about another page lives there (one set of pins): opened from this one, it goes over its own page.
   const home = (key: string, of: string) => {
     const flat = (p: string) => p.replace(/(\.html?|\/)$/i, '');
@@ -173,7 +230,7 @@ export function show(name: string, o: Opts) {
     view.style.setProperty('--bv-o', '0');
     requestAnimationFrame(fade);
   }
-  cur = { name, view, destroy: () => (ro.disconnect(), board.destroy()), onClose: o.onClose, restoration, pushed };
+  cur = { name, view, destroy: () => (ro.disconnect(), vv?.removeEventListener('resize', watch), vv?.removeEventListener('scroll', watch), cancelAnimationFrame(loop), board.destroy()), onClose: o.onClose, restoration, pushed };
   moved();
 }
 

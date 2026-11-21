@@ -755,6 +755,12 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       return { left: sx + scrollX, top: sy + scrollY, zone: null, ...(opts.clip && !inBox(sx, sy) && { clipped: true }) };
     },
     camera: () => ({ ...cam }),
+    /** The camera moves by dy screen px (the keyboard is up: a draft pin comes above its sheet); answers how far it did go (it stops at the board's edges). */
+    nudge: (dy: number) => {
+      const was = cam.y;
+      go({ ...cam, y: cam.y + dy / cam.z }, false, true);
+      return Math.round((cam.y - was) * cam.z);
+    },
     selected: () => selected,
     entered: () => entered,
     live: () => cards.filter((c) => c.frame).map((c) => c.f.id),

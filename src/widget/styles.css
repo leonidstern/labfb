@@ -720,3 +720,5 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   :host([data-sheet]) :is(.bar, .listener, .left) { transform: none; transition: opacity var(--_t-calm) var(--_ease-out); }
   :is(.bar, .listener, .left) { transition: opacity var(--_t-calm) var(--_ease-out); }
 }
+/* The board under a phone's keyboard: iOS pans the screen up and every fixed thing slides with it; the board view goes down by the pan (src/board/overlay.ts), and so do the pins held to it. */
+:host([data-pan]) .pin[style*="fixed"] { translate: 0 var(--lab-pan, 0px); }
