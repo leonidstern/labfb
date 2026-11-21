@@ -2,7 +2,6 @@
 import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
 import { heldPin, holdBox, letBox } from './pinhold.ts';
-import { pinBoard } from './boardcam.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -456,19 +455,6 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     });
     actions.append(...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : []));
     body.append(actions);
-  }
-  // The pin's own board, made by +board as the pin was sent (src/comments.js): a "board" key opens it again, once the
-  // lab says there is one (for a guest too: anyone may look at a board).
-  if (!W.S.board && c.anchor?.kind !== 'board') {
-    const own = W.el('button', { class: 'btn', type: 'button', hidden: '' }, 'board');
-    own.addEventListener('click', () => {
-      W.S.openId = null;
-      W.render();
-      void pinBoard(c.id);
-    });
-    const row = actions || body.appendChild(W.el('div', { class: 'row acts', hidden: '' }));
-    row.insertBefore(own, W.S.isAdmin ? row.lastChild : null); // before delete
-    fetch(`/_lab/api/board?name=pin-${c.id}`).then((r) => r.ok && (own.hidden = row.hidden = false), () => {});
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).
   if (W.coarse) {
