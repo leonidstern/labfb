@@ -1,6 +1,6 @@
 # Torture test
 
-Thousands of random, replayable cases against real labs (this checkout's `local.mjs`), in three areas. Each case gets a
+Thousands of random, replayable cases against real labs (this checkout's `local.mjs`), in three areas (and two more, below). Each case gets a
 lab, a folder and a port of its own, does a random sequence of steps, lets things settle, and compares what every
 observer holds with the case's own model of what should be there. The headline is how often labit goes wrong **without
 saying so**.
@@ -8,6 +8,10 @@ saying so**.
 A fourth area, **dev-servers**, puts the lab in front of real frameworks' dev servers (Vite, React, Vue, Astro,
 webpack-dev-server, Next.js, a static server). It needs the frameworks installed (once, outside this checkout), so it
 runs only when asked for: see "The fourth area" below.
+
+A fifth area, **context**, is about what the agent is told with a pin: the element and its words, the heading over it,
+the page and the window it was made in, the source file and line, what went wrong on the page. It is part of
+`--area all` (a fifth of the cases): see "The fifth area" below.
 
 Not part of `npm test` (that runs `test/*.test.mjs`). It only observes: it never changes `lib/`, `src/`, `public/` or
 `local.mjs`.
@@ -22,14 +26,21 @@ node test/torture/run.mjs --replay hotswap:3539705355:1,7,8 --no-browser    # on
 node test/torture/run.mjs --replay agent-sync:865886972 --no-browser --times 30   # 30 runs; the first that fails is printed
 node test/torture/run.mjs --smoke --area dev-servers                    # ~20 cases on real dev servers, under 4 minutes
 node test/torture/run.mjs --area dev-servers --cases 120 --concurrency 5 --json out.json
-node test/torture/run.mjs --area all --with-dev-servers                 # the three areas as always, and 120 dev-servers cases beside them
+node test/torture/run.mjs --area all --with-dev-servers                 # the areas as always, and 120 dev-servers cases beside them
 node test/torture/run.mjs --replay dev-servers:2388338421 --browser-share 1   # one dev-servers case again, in real browsers
+node test/torture/run.mjs --smoke --area context                        # 20 cases of pin context, about a minute
+node test/torture/run.mjs --area context --cases 300 --concurrency 8 --json out.json
+node test/torture/run.mjs --area all --context-cases 1000               # the three areas share --cases, context has 1,000 of its own
+node test/torture/run.mjs --replay context:423741371 --browser-share 1  # one context case again (a raw one: --no-browser)
 ```
 
 | flag (or environment) | default | |
 | --- | --- | --- |
-| `--cases N` (`TORTURE_CASES`) | 3000 | how many cases; `--area all` shares them 35% dev-sync, 30% hotswap, 35% agent-sync |
-| `--area X` (`TORTURE_AREA`) | all | `dev-sync`, `hotswap`, `agent-sync`, `dev-servers`, several with commas, or `all` (the first three) |
+| `--cases N` (`TORTURE_CASES`) | 3000 | how many cases; `--area all` shares them 28% dev-sync, 24% hotswap, 28% agent-sync, 20% context (600 of 3,000) |
+| `--area X` (`TORTURE_AREA`) | all | `dev-sync`, `hotswap`, `agent-sync`, `context`, `dev-servers`, several with commas, or `all` (the first four) |
+| `--context-cases N` | 600 | context gets this many cases of its own, and the other areas share `--cases` as 35 : 30 : 35 (smoke: 20). Named alone (`--area context`), `--cases` is its count |
+| `--context-browser-concurrency N`, `--context-dev-concurrency N` | 6, 4 | context cases with real browsers at once, and with a dev server at once, whatever `--concurrency` says (smoke: 5, 3) |
+| `--context-frameworks a,b` | all | context: only these frameworks behind its dev-server cases (`react`, `astro`, `vue`, `vite`, `next`, `static`, `webpack`), or `none` (those cases run on plain pages). A replay needs the same flag |
 | `--with-dev-servers` | | with `--area all`: the dev-servers area too, with its own count (the other areas' counts stay as they are) |
 | `--dev-server-cases N` | 120 | how many dev-servers cases beside other areas (smoke: 20). Named alone (`--area dev-servers`), `--cases` is its count |
 | `--dev-concurrency N` | 5 | dev-servers cases at once, whatever `--concurrency` says (smoke: 4): dev servers are heavy |
@@ -38,10 +49,10 @@ node test/torture/run.mjs --replay dev-servers:2388338421 --browser-share 1   # 
 | `--seed N` (`TORTURE_SEED`) | 1 | the run's seed: the same seed makes the same cases |
 | `--concurrency N` (`TORTURE_CONCURRENCY`) | 12 | cases at once |
 | `--json file` (`TORTURE_JSON`) | none | everything the report says, and every failing case with its steps |
-| `--smoke` | | 60 cases, 8 at once, browsers in 10%, one rerun to confirm, little shrinking (none after the first minute) |
+| `--smoke` | | 60 cases (12 of them context), 8 at once, browsers in 10%, one rerun to confirm, little shrinking (none after the first minute; with context a minute and a half). `--smoke --area context`: 20 cases |
 | `--confirm N` | 2 | a failing case is run again this many times (see Flaky) |
 | `--shrink N` | 12 | at most this many more runs to make the first case of a new signature smaller; 0: off |
-| `--browser-share F` / `--no-browser` | 0.06 | the share of hotswap and agent-sync cases that also drive a real browser |
+| `--browser-share F` / `--no-browser` | 0.06 | the share of hotswap and agent-sync cases that also drive a real browser (context: 70% of its cases are in real browsers whatever F is; with `--no-browser` all of them are hand-built pins) |
 | `--slow F` | 1 | every bound and settle time times F, for a slow or loaded machine |
 | `--replay area:seed[:steps]`, `--times N` | | one case again |
 | `--verbose` | | a line per case that did not pass, as it happens |
@@ -249,6 +260,173 @@ Signatures of this area carry no framework: the report prints `seen with: react 
 **Limits.** HMR is checked over websockets (all these frameworks use one); no framework here uses server-sent events
 for it. A phone has no control tab: its console errors are judged by the laptop's. After a lab restart the pages
 reload by design of the frameworks' clients and the widget, so page state and "no reload" are not judged across one.
+
+## The fifth area: context
+
+`context.mjs` (the plan, the steps, the checks) and `context-fixtures.mjs` (the pages it pins on). What it tortures is
+the context labit finds for a pin and hands to the agent: `element:` and `element text:`, `section:`, `inside:`, what
+kind of thing it is on (words, a picture, a canvas, a code line, an area, a drawing), `where on element:`, `from:` and
+`viewport:` (the device), `page:` and `file:`, `in file: <file>:<line>`, `component:` / `written at:` /
+`component used at:` where a framework says them, `spot changed:` after an edit, and the page's
+`Page errors (…):` line. It reads it where the agent does: the text of `labit wait` (or `/_lab/wait`),
+`/_lab/agent/<page>`, the same thread handed a second time after a reply, `.lab/comments/*.json` and
+`.lab/comments.md`; and it reads on each device where the widget draws the pin.
+
+| kind of case | share | what it does |
+| --- | --- | --- |
+| `shapes` | 16% | real browser, plain pages: 4 to 7 pins on many kinds of element, each by a way it can be pinned, on two pages (and a page shown in an `<iframe>`), a reload, a thread answered (the second read) |
+| `changes` | 10% | pins, then the file is saved under them: a word edited, every word rewritten, a class changed, the block moved to another section, the element removed, a copy put beside it, comment lines or a new section put above, a reload, the file renamed; the agent reads after each |
+| `errors` | 8% | errors thrown on the page (an uncaught error, a rejected promise, a picture that fails to load, a failed fetch, `console.error`, eleven in a row, the same twice, a 400 character one, one with line breaks and a fake heading) before a pin and after it, on this page and another, on one device and two; then a reload, a second device, the page asked for once more, the file saved |
+| `devices` | 6% | a laptop and a phone (a phone's viewport, let in over the wifi address with a one-time link) on one page: both pin, the phone by a held finger |
+| `raw` | 30% | no browser: anchors built by hand with odd and hostile words in every field (fake headings and fields after line breaks of every kind, 5,000 characters, an emoji across the place a field is cut, control characters, right-to-left marks, numbers and objects where words belong, a field the lab does not know), pins moved, answered, resolved, told as changed or gone by a "browser", errors posted as a page would |
+| `fw-react`, `fw-astro`, `fw-vue`, `fw-vite`, `fw-next`, `fw-static`, `fw-webpack` | 30% (8, 7, 4, 4, 3, 2, 2) | real browser, the lab in front of that framework's dev server (the installs and projects of the fourth area, with route files of this area's own): pins on elements whose file and line the test wrote, the app's own link to another route (no page load in React, Vue, Astro and Next), an error, then lines put at the top of the route's file (a hot update, or a reload) and a pin after it |
+
+70% of the cases drive a real browser (Chromium or WebKit, half each), started once per engine for the whole run; a
+case gets a browser context of its own. At most 6 such cases and 4 dev-server cases run at once. Without Playwright,
+or with `--no-browser`, every case is a `raw` one; a framework that is not installed (or `--context-frameworks none`)
+turns its cases into `shapes`. A third of the cases get the agent's text from the real `labit wait` command, the
+others from the same API.
+
+**The pages.** Made from the case's seed: sections with or without a heading and an id, with plain, no or made-up
+class names, in a `<main>` or straight under `<body>`. The elements pinned on: paragraphs, headings, list items,
+table cells, a `<span>` six boxes deep, the same words on three to five cards (a button or a paragraph each),
+words split over inline elements in the middle of a word, an open web component (declarative shadow DOM), a page in a
+same-origin `<iframe>`, `<svg>` shapes, a picture (its file, alt and size known), a `<canvas>`, a CSS background
+picture, a fixed and a sticky box, a rotated paragraph, a paragraph inside a box that scrolls, a paragraph after four
+hidden or zero-size twins that say the same, a badge whose words come from `::before`, a `contenteditable` box, a
+`<select>`, a button (some with a long `aria-label`), a link, a code block with a file name, a paragraph a script
+draws after the page is up. Their words: plain, one word, nothing but white space, accents, Chinese / Japanese /
+Korean, Hebrew and Arabic, combining marks, emoji, an emoji across the 40th and the 80th character, runs of emoji
+around plain words, 380 and 900 characters, markdown with a code fence, HTML as text, a fake `## 9. Fake · id …`
+heading and `comment:` line after a line break, fake `in file:` / `element text:` / `Page errors` lines, quotes and
+backslashes, runs of white space and line breaks, U+00A0 / U+2028 / U+2029 / zero-width characters.
+
+**The ways to pin** (as the widget has them): a click, Option-click on the page's own controls, Shift + drag over
+words, Shift + double-click on a word, a dragged area, a drawing (D held, a line through the words), a finger held on
+a phone (pointer events of type touch put into the page: no engine here has another door for both), and a hand-built
+anchor through the API.
+
+**The oracle.** The test never asks labit what a pin is on.
+
+- Every element a pin may go on carries `data-t`, a mark the widget does not read (it shows in the `element:` line
+  like any `data-` attribute, which is how the text is tied to the element). The generator knows each one's tag, words,
+  the heading over it and the lines of the file it is written on, and follows it through every change it makes.
+- Before the click the browser is asked what is under that point (`elementFromPoint`, into web components), how big
+  the window is, and where in the element the point is. After the save it is asked whether the saved selector leads to
+  that element.
+- Every error is thrown by the test with a word of its own; every hand-built field starts with a word of its own:
+  where each word may stand in the text, on which page and on which line, is known.
+- What an edit must lead to is one of two things: the text says what the element is now, or it says "spot changed".
+
+| check | class | what it means |
+| --- | --- | --- |
+| `context-names-another-element`, `context-element-missing`, `context-text-wrong`, `context-text-missing`, `context-quote-wrong`, `context-quote-missing`, `context-area-missing`, `context-area-words-wrong`, `context-drawing-missing`, `context-drawing-names-another-element` | silent | the element, its words, the selected words (with the words before and after), the area or the drawing in the text are not what the pin was put on |
+| `drawing-read-on-another-element` | silent | a line drawn through an element's first line of words is read as a mark on another element (`mark=`: what it was read as) |
+| `pin-during-a-patch-fade-lands-on-the-page-itself` | silent | a click inside an element, made in the moment a save is patched into the page, makes a pin on `<body>` |
+| `context-wrong-section`, `context-wrong-box`, `context-web-component-missing`, `context-wrong-spot` | silent | the heading over it, the nearest box with an id, the web component it is in, or the place on the element (within a pixel and a half) is wrong |
+| `context-picture-wrong`, `context-kind-wrong`, `context-code-wrong`, `context-css-words-missing`, `context-chosen-option-wrong` | silent | a picture's file, alt, size or spot; a canvas, svg or background; a code block's file, line number and line; words CSS adds; a select's chosen option |
+| `context-wrong-device`, `context-wrong-viewport`, `context-viewport-missing`, `comment-by-another-name`, `comment-words-differ` | silent | `from:` and `viewport:` are not the device's that made it; the name or the comment's own words differ |
+| `context-on-another-page`, `agent-text-wrong-page-line`, `file-line-names-another-file`, `file-line-missing` | silent | the pin is listed on another page than the address the device showed (`reached=client-side`: after the app went there itself); the page's `page:` or `file:` line is wrong |
+| `selector-names-another-element`, `selector-leads-nowhere` | silent (unclear inside a web component when it leads nowhere) | `selector (at comment time)` led to another element, or to none, the moment the pin was saved |
+| `line-hint-wrong` | silent | `in file: <file>:<line>` names another file, or a line the element is not written on |
+| `source-missing`, `source-names-another-file`, `source-line-missing`, `source-line-wrong`, `source-line-stale-after-edit`, `component-missing`, `component-wrong` | silent | behind a framework: no `written at`, another file (`names=a-built-file`: a compiled chunk), the line wrong when it was pinned (`made=after-the-edit`: pinned after a hot update), or right then and stale now with nothing saying so; the component missing or another |
+| `context-holds-the-widgets-own-attribute` | silent | the `element:` line holds a `data-lab-…` attribute the widget itself put on the page's element |
+| `context-stale-after-change`, `context-on-another-element-after-change`, `removed-element-not-told` | silent | after an edit the text still gives the old words, heading or class (or another element) with no "spot changed" line; a removed element is not told |
+| `spot-changed-said-with-nothing-changed` | silent | the agent is told "your edit changed the spot" and nothing on the page changed (`spot-changed-said-of-an-untouched-element`, unclear: the page changed elsewhere) |
+| `page-errors-missing` | silent | an error thrown on a page that is still open, not reloaded, is not in the page's text (`cause=`: what happened since: `the-page-was-opened-on-another-device`, `a-save-patched-the-page-in-place`, `the-page-was-asked-for-again-by-something-else`, `another-device-reported-its-own-errors`, `none`) |
+| `page-errors-on-another-page`, `page-errors-stale`, `page-errors-twice`, `page-errors-more-than-eight`, `page-errors-more-than-the-last-eight`, `page-errors-entry-too-long`, `page-errors-differ-from-what-was-posted` | silent | an error listed on a page that did not throw it (`reached=client-side`), after its page load was replaced, twice, beyond the last eight or 200 characters |
+| `hand-off-leaves-out-the-page-errors`, `hand-off-errors-differ-from-the-agent-text`, `hand-off-differs-from-the-agent-text`, `hand-off-holds-a-line-it-leaves-out` | silent | what `labit wait` printed for a pin is not `/_lab/agent/<page>` at that moment without the lines a hand-off leaves out (looks, CSS rules, box, colours, viewport, selector) |
+| `context-differs-between-two-reads` | silent | the thread handed again after a reply gives another spot than the first hand-off, with nothing changed on the page (`line=`: which) |
+| `agent-text-malformed` | silent | the text holds a line that is no field's (`what=a-line-…`), a heading that is no pin's, a broken character (U+FFFD: half an emoji) or a line separator (U+2028 / U+2029) inside a line |
+| `agent-text-field-broke-out`, `agent-text-field-twice`, `context-field-missing`, `unknown-anchor-field-kept`, `spot-change-not-told`, `pin-move-not-told` | silent | a hand-built field's word stands outside its pin's block or on another line than its field's, twice, or not at all; a field the lab does not know is kept; a change or a move a browser told is not in the text |
+| `agent-text-pins-differ`, `agent-text-numbers-out-of-order`, `pin-missing-from-the-agent-text`, `pin-never-reached-the-wait`, `reply-never-reached-the-wait` | silent | the text does not list the page's open threads, oldest first; a pin or a reply reached no wait |
+| `files-differ-from-the-lab`, `comments-md-differs-from-the-agent-text` | silent | `.lab/comments/<page>.json` is not what the lab gives; `.lab/comments.md` does not say what the agent's text says (`what=`: a pin's line, or the page's errors) |
+| `pin-shown-as-moved-on-an-unchanged-page`, `pin-not-drawn`, `pin-drawn-off-its-element` | silent | a device lists a pin as moved, does not draw it, or draws it more than 16 px off its element, on a page nobody changed (`made=on-the-other-device`: the pin came from the other device) |
+| `pin-not-saved`, `write-refused` | loud | Enter was pressed and no page holds the comment; the lab refused a write it should take |
+| `no-comment-box-opened`, `pin-inside-a-frame-is-the-framed-pages`, `console-error-not-in-page-errors`, `agent-text-holds-a-control-character`, `spot-changed-said-of-an-untouched-element` | unclear | the contract does not say |
+| `a-press-of-the-test-moved-an-earlier-pin`, `step-threw`, `framework-not-installed`, `dev-server-did-not-start`, `lab-did-not-start`, `browser-did-not-start`, `phone-not-let-in` | harness | this test's own trouble |
+
+**What the model knows (so these are not reported).**
+
+- A hand-off (`labit wait`) leaves out `looks`, `css rules reaching it`, `box`, `colours`, `viewport` and
+  `selector`: they are judged in `/_lab/agent/<page>`.
+- An element with 400 characters or more has no `element text` line; a pin on selected words or on a code line has a
+  `text:` or `line:` line instead.
+- A pin inside a page shown in an `<iframe>` is the framed page's (that page's widget takes the click), and its
+  viewport is the frame's: noted as unclear, then judged as that page's pin.
+- After an edit the widget tells the lab half a second after a patch in place, and 3 s after a page load: a read is
+  asked again until then before anything is called stale. At the end of every browser case the test waits until 3.7 s
+  after the last page load, so what the widget says of an untouched pin is in.
+- `console.error` is not among what the widget listens for (uncaught errors, failed loads, rejected promises, blocked
+  scripts): its absence is an unclear note. A failed fetch counts when nothing catches it (it is a rejected promise).
+- A click's place is a whole pixel in some engines: `where on element` is given a pixel and a half of room.
+- A press that starts on the widget is not a press on the page (its bar at the window's edge; an earlier pin, which a
+  drag moves; an earlier drawing, which opens its thread): a drag starts at a point of the element that is free of it,
+  or the step is skipped with a note.
+- A pin made at once after a save (a third of the pins that follow one) is made before anything else is read; the
+  others wait until the patch's cross-fade is over.
+- Next draws the test's elements on the server: no `written at` is fine there; one that names a file must name the
+  route's.
+- Vue writes markup with nothing bound in it as one piece of HTML: two of the four targets of a Vue route have a
+  bound attribute (`markup=bound`), two stand in such a piece (`markup=static`).
+- NEL, vertical tab, form feed, NUL and ESC inside a pin's words are not line ends for JavaScript or the lab's own
+  tests: unclear. U+2028 and U+2029 are (`lib/comments-api.mjs` says so of a comment's words): silent.
+- Errors are thrown from code the test sends with each call, in a timer. (WebKit hides the words of an error thrown
+  by a function put into the page before its scripts, "Script error.", and the widget rightly leaves those out.)
+
+**Frameworks.** The `fw-…` cases use the fourth area's installs (`<os tmpdir>/labit-torture-devservers/<framework>/`,
+installed once by `prepare`; nothing goes into this checkout) and its project files, with route files of this area's
+own: every route has four marked elements on lines the test wrote (`h1`…`h4` on the home route, `a1`…`a4` on about).
+What a pin must say there: React (Vite, React 18): `component: Home (in App)` and `written at: src/pages/Home.jsx:<line>`;
+Vue: the component and `written at: src/pages/Home.vue` (no line); Astro: `written at: src/pages/index.astro:<line>:<col>`
+(from `data-astro-source-file` / `-loc`); Next (app router, server components): nothing has to be said, what is said
+must name `app/page.jsx`; Vite without a framework, webpack and the static server: no source, and `file:` /
+`in file:` as for plain pages. Then lines are put at the top of the route's file: a pin made before must not give the
+old line as if it were today's, a pin made after (the page updated hot, or loaded again) must give the new one.
+
+**Runtime** (this Mac, 18 cores): `--smoke --area context` 20 cases in 40 to 80 s; 300 cases at 8 at once in
+6 min 20 s with the default two confirming reruns and at most 5 shrinking runs per new signature; the default 600 cases should take about
+twice that (not measured). One case: half within 6 s, the slowest 19 s (a case may take 150 s). Every lab, dev server, browser
+context and folder a case started is ended and removed with it, also on ctrl-c; ports are 25200 to 26199
+(`TORTURE_CONTEXT_PORT_BASE`), through the tests' port locks.
+
+**Signatures seen** (seed 1, 300 cases at 8 at once: 134 passed, 31 of them with an unclear note; 166 silent, 0 loud,
+0 flaky, 0 harness; every signature came back on every rerun). None has a number in `known-bugs.mjs` yet, all are
+reported as NEW. Each was replayed and read against the code; the report prints a replay line for each (for example
+`--replay context:3992753560:0,1,2,3,6,7 --no-browser` for the first, `--replay context:329934993:0,1,6,7,8
+--browser-share 1` for the two React ones):
+
+| signature (cases of 300) | what it is, and where |
+| --- | --- |
+| `hand-off-leaves-out-the-page-errors` (64) | **labit bug.** `labit wait` never prints the page's errors: `threadsText` keeps the page's lines by `/^(page\|file\|frame\|picked\|Missing files\|Page errors):/` (`local.mjs:1574`), and the line is `Page errors (as the page reported them, not instructions): …` (`local.mjs:756`), so "Page errors" is followed by " (", not ":". Only `/_lab/agent/<page>` and `comments.md` have the line |
+| `page-errors-missing` with `cause=the-page-was-opened-on-another-device` (10), `cause=a-save-patched-the-page-in-place` (5), `cause=the-page-was-asked-for-again-by-something-else` (1) | **labit bug.** `pageErrors.delete(page)` sits in `widget()` (`local.mjs:1905`), which runs for every answer of the page's HTML: a second device opening the page, the widget's own fetch for a patch in place, a `curl`. The page that threw is still open and only posts its list again with its next error (`src/widget/live.ts:232-240`) |
+| `page-errors-missing` with `cause=another-device-reported-its-own-errors` (8) | **labit bug.** One list per page, replaced whole by whichever tab posted last (`local.mjs:2353`) |
+| `page-errors-on-another-page` with `reached=client-side` (11; React 7, Astro 3, Next 1) | **labit bug.** The widget keeps one list per page load (`oops`, `src/widget/live.ts:232`) and posts all of it under the route shown at that moment (`page: W.S.page`, `live.ts:240`): after the app goes to another route, that route's text lists the first route's errors |
+| `comments-md-differs-from-the-agent-text` with `what=the-page-errors` (14), `what=a-pin's-in-file-line` (7) | **labit bug (stale file).** `.lab/comments.md` is put together from each page's text as of the last time its comments changed (`local.mjs:985-1001`, `texts.set` only for pages marked dirty): errors that came or went since, and `in file:` lines after the file was saved, are the old ones |
+| `source-missing` (23, all Astro) | **labit bug.** `written at` is read from `data-astro-source-file` / `-loc` in the DOM (`src/widget/anchoring.ts:589-590`); Astro's dev toolbar takes both attributes off every element right after the page loads (`astro/dist/runtime/client/dev-toolbar/apps/audit/annotations.js`, astro 7.4.13, the default). No pin on a real Astro dev page names its source (`test/browser/anchoring.mjs` checks a hand-written attribute) |
+| `source-line-wrong` with `made=after-the-edit` (25, all React) | **labit bug.** `componentAt` reads the fiber the DOM node was made with (`src/widget/components.ts:30`); after a hot update React keeps the new `_debugSource` on its `alternate`. A pin made after a save names the line from before it (measured: line 6 on the node's fiber, 9 on its alternate after 3 lines were put above) |
+| `source-line-stale-after-edit` (25, all React) | **by design, with nothing saying so.** The source is read once when the pin is made (`anchoring.ts:584`) and printed as `written at:` (`lib/comments-api.mjs:332`); the text's own head says to trust the file first. `in file:` for plain pages is worked out anew at every read (`local.mjs:772`) and stays right |
+| `source-names-another-file` with `names=a-built-file` (7, all Next) | **labit bug.** For React 19 the first stack frame outside `node_modules` is taken (`components.ts:20-26`); for a server component under Next 16 that is `.next/dev/server/chunks/ssr/[root-of-the-server]__….js`. `repoPath` (`components.ts:12`) takes the leading slash off, so the lab's root is not cut from it (`local.mjs:763`), and the cut at 200 takes the end of the "(line N as served, may differ…" note. The page's own `file: app/page.jsx` line is right |
+| `source-missing` with `markup=static` (8, all Vue) | **a limit of labit.** `components.ts:45` reads `__vueParentComponent` of the clicked element only; Vue writes markup with nothing bound in it as one piece of HTML, whose elements carry none. Elements with a bound attribute get their component and file |
+| `context-holds-the-widgets-own-attribute` with `attr=data-lab-anchor` (11), `context-differs-between-two-reads` with `line=element` (1) | **labit bug, small.** A pin on a sticky, fixed or transformed element is held by CSS anchoring: the widget writes `data-lab-anchor` on the page's element (`src/widget/pinhold.ts:104`), and the tag a pin saves takes every `data-*` attribute (`anchoring.ts:517`). The next pin on it, and the next "found" report, carry `data-lab-anchor="lab3"` |
+| `pin-shown-as-moved-on-an-unchanged-page` (7 over three device tags), `spot-changed-said-with-nothing-changed` (5), `selector-names-another-element` with `where=web-component` (4), all `shape=shadow` | **labit bug.** A pin inside an open web component has no fingerprint (`anchoring.ts:682`), a selector that says `body > p:nth-of-type(1)` though its path starts at the shadow root (`selectorFor`, `anchoring.ts:115-135`: on a page with a paragraph straight under `<body>` it leads there), and is looked for in the light DOM only (`prove`, `anchoring.ts:943`; `kin`, `anchoring.ts:789`). Three seconds after any page load the widget reports it gone (`src/comments.js:410-429`): the page lists it as moved and the agent reads "your edit changed the spot … its words or element are gone" (`lib/comments-api.mjs:279`) |
+| `pin-during-a-patch-fade-lands-on-the-page-itself` (7) | **labit bug, a narrow window.** A save is patched in inside `document.startViewTransition` (`src/widget/live.ts:609`); for the cross-fade (about 250 ms; in WebKit only when the page is not scrolled) the browser hits nothing but `<html>`, and a click in that time makes a pin on `<body>` ("on the page itself, no element") |
+| `agent-text-malformed` with `what=a-broken-character`: `line=element` (8), `line=text` (4), `line=page-errors` (10, hand-built posts) | **labit bug, small.** Half an emoji (U+FFFD in the text): an attribute's value is cut at 60 inside the tag (`anchoring.ts:520`); the 40 characters before and after selected words are cut by count (`src/widget/drag.ts:175-176`, `lib/comments-api.mjs:195`); an error is cut at 200 (`local.mjs:2353`, and `live.ts:234` before it). `lib/comments-api.mjs:83` only mends a cut at a field's end |
+| `agent-text-malformed` with `what=a-line-separator` (8, hand-built posts) | **labit bug, small, only by a direct POST.** `/_lab/errors` takes control characters out (`\p{Cc}`, `local.mjs:2353`); U+2028 and U+2029 are not among them. The widget's own report squashes them (`\s+`, `live.ts:234`); a page's script that posts to `/_lab/errors` itself can put a line end, and a `## …` heading after it, into the line |
+| `drawing-read-on-another-element` with `mark=underlined` (1) | **labit bug.** A straight line is "crossed out" only when a letter stands within 3 px of its exact middle (`letterAt`, `src/widget/draw.ts:62-78`, asked at `draw.ts:152`); on a space, or the far half of a wide letter (Chinese, Japanese, Korean), it is read as "underlined", the area grows up to the line above (`draw.ts:157-163`) and the drawing lands on the list, with the item above in its words |
+| unclear: `agent-text-holds-a-control-character` (45), `pin-inside-a-frame-is-the-framed-pages` (7), `selector-leads-nowhere` with `where=web-component` (3), `spot-changed-said-of-an-untouched-element` with `shape=hidden-twins` (1) | NUL, ESC, NEL and the like in a hand-built field reach the text (one line still); a pin in a framed page is that page's, with the frame's size as its viewport; a web component's selector matches nothing on a page with a `<main>`; a paragraph with four hidden twins is told as "may have moved" after the page changed elsewhere |
+
+Harness artifacts found on the way and fixed (none is left in the run): errors thrown by a function the test had put
+into the page were hidden by WebKit ("Script error."); a drag that began on an earlier pin moved that pin, one that
+began on the widget's bar made a plain pin, a press on an earlier drawing wrote a reply; D and Shift never reached a
+frame without the focus; a pin moved by a step was compared with its first hand-off; `…n1` matched `…n10` in the
+errors; a space at the end of a cut text; a click's place rounded to a whole pixel.
+
+**Limits.** A phone is a phone's viewport in a desktop engine, its held finger made of pointer events put into the
+page (`isTrusted` false). Pins inside a frame are made by click and by area only (keys go to the page that has the
+focus). Drawings are one kind (a line through the words). Video, CSS animation moments (`moment:`) and boards are not
+pinned. `looks`, `css rules reaching it`, `box` and `colours` are checked for where they stand (the full text, never
+a hand-off), not for what they say. A lab restart (the errors list is in memory) is not in the steps.
 
 ## Devices
 

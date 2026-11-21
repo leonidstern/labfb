@@ -57,6 +57,10 @@ type Anchor = {
   nh?: number;
   imgX?: number;
   imgY?: number;
+  imgX2?: number;
+  imgY2?: number;
+  /** On a board: the frame a pin is on, in px from its top left. */
+  frame?: string;
   time?: number;
   /** The page's videos and animations were paused when this was written. */
   paused?: boolean;
@@ -112,16 +116,21 @@ const generated = (v) => GENERATED.test(v || '');
 // Names a page gives an element for tests or for comments: the most lasting way to find it again.
 const NAMED = ['data-testid', 'data-lab', 'data-comment-target'];
 
+// A path to an element inside an open web component goes through its host: "host path >>> path inside its shadow root"
+// (not CSS: query() below follows it).
+const SHADOW = ' >>> ';
 export function selectorFor(node) {
+  const root = node.getRootNode?.();
+  const scope: ParentNode = root instanceof ShadowRoot ? root : document;
   const parts = [];
   while (node && node.nodeType === 1 && node !== document.body && node !== document.documentElement) {
     const name = NAMED.find((a) => node.getAttribute(a));
     const named = name && `[${name}="${CSS.escape(node.getAttribute(name))}"]`;
-    if (named && document.querySelectorAll(named).length === 1) {
+    if (named && scope.querySelectorAll(named).length === 1) {
       parts.unshift(named);
       break;
     }
-    if (node.id && !generated(node.id) && document.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
+    if (node.id && !generated(node.id) && scope.querySelectorAll(`#${CSS.escape(node.id)}`).length === 1) {
       parts.unshift(`#${CSS.escape(node.id)}`);
       break;
     }
@@ -131,13 +140,24 @@ export function selectorFor(node) {
     parts.unshift(`${tag}:nth-of-type(${index})`);
     node = node.parentElement;
   }
+  if (scope !== document) return `${selectorFor((scope as ShadowRoot).host)}${SHADOW}${parts.join(' > ')}`;
   return parts.length ? (/^[#[]/.test(parts[0]) ? '' : 'body > ') + parts.join(' > ') : 'body';
 }
+// The element a selector leads to (the first), through the shadow roots it names. Throws on a selector that is not valid.
+const query = (selector: string): Element | null => {
+  let node: Element | null = null;
+  for (const [i, part] of selector.split(SHADOW).entries()) if (!(node = (i ? node?.shadowRoot : document)?.querySelector(part) ?? null)) break;
+  return node;
+};
 
 const docWidth = () => Math.max(document.documentElement.scrollWidth, 1);
 
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
-export const short = (v, n) => (v || '').replace(/\s+/g, ' ').trim().slice(0, n);
+// Text cut to n characters (from the end when n is negative) without splitting an emoji: a half of a surrogate pair, or a
+// joiner with nothing after it, is dropped (it reached the agent as U+FFFD).
+export const cut = (v: string, n: number): string =>
+  v.length <= Math.abs(n) ? v : n < 0 ? v.slice(n).replace(/^(?:[\udc00-\udfff]|\u200d)+/, '') : v.slice(0, n).replace(/(?:[\ud800-\udbff]|\u200d)+$/, '');
+export const short = (v, n) => cut((v || '').replace(/\s+/g, ' ').trim(), n);
 
 // A source-file hint from a (possibly proxied, hashed or optimised) image URL: "hero-1" from
 // /_astro/hero-1.Bx3kd9_Z.webp, /_image?href=..., /_vercel/image?url=..., /media/<id>/w800.webp.
@@ -456,8 +476,8 @@ function quoteAt(cx, cy, shadowRoots = []) {
   const squash = (v) => v.replace(/\s+/g, ' ');
   const quote: Quote = {
     exact: short(text.slice(a, b), 80),
-    prefix: squash(before.slice(-80)).replace(/^\s+/, '').slice(-40),
-    suffix: squash(after.slice(0, 80)).replace(/\s+$/, '').slice(0, 40),
+    prefix: cut(squash(before.slice(-80)).replace(/^\s+/, ''), -40),
+    suffix: cut(squash(after.slice(0, 80)).replace(/\s+$/, ''), 40),
   };
   // Code (or any preformatted text): the whole line, its number in the block, and the block's label
   // (a figcaption, data-file, title or aria-label nearby), so an agent can open the file at that line.
@@ -514,11 +534,11 @@ function quoteAt(cx, cy, shadowRoots = []) {
 
 export function openingTag(node) {
   const attrs = [...node.attributes]
-    .filter((a) => /^(id|class|alt|role|aria-label|href|data-[\w-]+)$/.test(a.name))
+    .filter((a) => /^(id|class|alt|role|aria-label|href|data-(?!lab-(?!action))[\w-]+)$/.test(a.name))
     .map((a) => [a.name, a.name === 'class' ? a.value.split(/\s+/).filter((c) => c && !generated(c)).join(' ') : a.name === 'id' && generated(a.value) ? '' : a.value])
     .filter(([n, v]) => v || !/^(id|class)$/.test(n))
     .map(([n, v]) => `${n}="${short(v, 60)}"`);
-  return `<${node.localName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(0, 200);
+  return cut(`<${node.localName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`, 200);
 }
 // Is this element the kind a pin was put on? Same tag and id, and at least one of its classes still there: pages
 // add and drop state classes (offscreen, is-active, open), and an exact match of the tag moved those pins away.
@@ -679,7 +699,7 @@ export function anchorAt(clickX, clickY, words = false, onto = null) {
     }
   }
   Object.assign(anchor, schemeAt(target));
-  if (!shadowHost && target !== document.body) anchor.fp = fingerprint(target);
+  if (target !== document.body) anchor.fp = fingerprint(target);
   if (aside) anchor.sx = Math.round(aside);
   return anchor;
 }
@@ -764,14 +784,15 @@ type Fp = { h: string; t: string; u: number; k: number; x: string; l: number; o:
 type Proof = { node: Element | null; sure?: boolean; alike?: boolean };
 // One read of the page, shared by every pin until the page changes (a MutationObserver says so; takeRecords makes it
 // true at once too, in the same task): each element's words, the elements by tag and by words, and each pin's proof.
-type Read = { words: Map<Element, string>; tags: Map<string, Element[]>; said: Map<string, Map<string, Element[]>>; got: WeakMap<object, Proof>; lead: Map<Element, string>; heads?: Element[] };
+type Read = { words: Map<Element, string>; tags: Map<string, Element[]>; said: Map<string, Map<string, Element[]>>; got: WeakMap<object, Proof>; lead: Map<Element, string>; heads?: Element[]; roots?: ShadowRoot[] };
 let seen: Read | null = null;
 let watch: MutationObserver | null = null;
 // What names an element that has no words (a field, an icon button, a picture: with its file's name).
 const NAMING = ['alt', 'aria-label', 'placeholder', 'name', 'title', 'for', 'href', 'type'];
+const WATCH: MutationObserverInit = { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: NAMING };
 const read = (): Read => {
   watch ||= new MutationObserver(() => (seen = null));
-  if (!seen) watch.observe(document, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: NAMING });
+  if (!seen) watch.observe(document, WATCH);
   else if (watch.takeRecords().length) seen = null;
   return (seen ||= { words: new Map(), tags: new Map(), said: new Map(), got: new WeakMap(), lead: new Map() });
 };
@@ -786,11 +807,31 @@ const hash = (s: string) => {
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return (h >>> 0).toString(36);
 };
+// The page's open web components' shadow roots (nested ones too), watched for changes like the page.
+const shadows = (): ShadowRoot[] => {
+  const r = read();
+  if (!r.roots) {
+    const out: ShadowRoot[] = [];
+    const scan = (n: ParentNode) => {
+      for (const e of n.querySelectorAll('*')) {
+        if (!e.shadowRoot || e === host) continue;
+        out.push(e.shadowRoot);
+        watch!.observe(e.shadowRoot, WATCH);
+        scan(e.shadowRoot);
+      }
+    };
+    scan(document.body);
+    r.roots = out;
+  }
+  return r.roots;
+};
 const kin = (tag: string): Element[] => {
   const t = read().tags;
-  if (!t.has(tag)) t.set(tag, [...document.body.getElementsByTagName(tag)].filter((n) => !host.contains(n)));
+  if (!t.has(tag)) t.set(tag, [...document.body.getElementsByTagName(tag), ...shadows().flatMap((r) => [...r.querySelectorAll(tag)])].filter((n) => !host.contains(n)));
   return t.get(tag)!;
 };
+// An element's parent, a web component's host for the first element inside its shadow root.
+const up = (e: Element): Element | null => e.parentElement || (e.getRootNode() as ShadowRoot).host || null;
 // The elements of a tag that say exactly these words (by hash), in page order.
 const saying = (tag: string, h: string): Element[] => {
   const s = read().said;
@@ -869,10 +910,10 @@ function search(a, fp: Fp, at: Element | null, tag: string, co: (n: Element) => 
   const sq = (s: string) => s.replace(/\s+/g, '');
   const want = (/ class="([^"]*)"/.exec(a.element || '')?.[1] || '').split(/\s+/).filter(Boolean);
   const wantId = / id="([^"]*)"/.exec(a.element || '')?.[1] || '';
-  const steps = String(a.selector || '').split(' > ').filter((s) => s !== 'body').reverse();
+  const steps = String(a.selector || '').split(/ >{1,3} /).filter((s) => s !== 'body').reverse();
   const [was0, was1] = (fp.b || '').split('\u0001');
   const side = (was: string, now: string) => (was ? alike(was, now) : Number(!now));
-  const nth = (e: Element) => [...(e.parentElement?.children || [])].filter((x) => x.localName === e.localName).indexOf(e) + 1;
+  const nth = (e: Element) => [...((e.parentNode as ParentNode | null)?.children || [])].filter((x) => x.localName === e.localName).indexOf(e) + 1;
   const score = (c: Element): Scored => {
     let sum = 0, tot = 0;
     const add = (w: number, v: number) => ((sum += w * v), (tot += w), v);
@@ -890,7 +931,7 @@ function search(a, fp: Fp, at: Element | null, tag: string, co: (n: Element) => 
     const cl = [...c.classList].filter((x) => !generated(x)), both = want.filter((x) => cl.includes(x)).length;
     add(1.5, (c.localName === tag ? 0.5 : 0) + 0.3 * (want.length + cl.length - both ? both / (want.length + cl.length - both) : 1) + 0.2 * Number((c.id || '') === wantId));
     let hit = 0, n = 0;
-    for (let e: Element | null = c; n < steps.length && n < 6; e = e?.parentElement ?? null, n++) {
+    for (let e: Element | null = c; n < steps.length && n < 6; e = e && up(e), n++) {
       const m = /^([\w-]+):nth-of-type\((\d+)\)/.exec(steps[n]);
       hit += !e ? 0 : m ? (e.localName === m[1] ? (nth(e) === +m[2] ? 1 : 0.6) : 0) : Number(e.matches(steps[n]));
     }
@@ -943,7 +984,7 @@ function search(a, fp: Fp, at: Element | null, tag: string, co: (n: Element) => 
 function prove(a): Proof {
   let at: Element | null = null;
   try {
-    at = document.querySelector(a.selector);
+    at = query(a.selector);
   } catch {}
   const tag = /^<([\w-]+)/.exec(a.element || '')?.[1] || at?.localName || '';
   if (at && (at === document.body || at.localName !== tag || host.contains(at))) at = null;
@@ -1008,7 +1049,7 @@ function holder(anchor, keep: (n: Element) => boolean): Element | null {
     parts.pop();
     let node: Element | null = null;
     try {
-      node = document.querySelector(parts.join(' > '));
+      node = query(parts.join(' > '));
     } catch {}
     if (node && !/^(html|body)$/.test(node.localName) && !host.contains(node) && keep(node)) return node;
   }
@@ -1183,7 +1224,7 @@ export function foundAt(anchor) {
   const { node, sure } = proof(anchor);
   let at = null;
   try {
-    at = document.querySelector(anchor.selector);
+    at = query(anchor.selector);
   } catch {}
   if (!node || (anchor.section && !sure && !inSection(node, anchor.section))) return null;
   const now: Partial<Anchor> = sure || (!anchor.fp && node === at && words(node).startsWith(short(anchor.text, 40))) ? { ...around(node), element: openingTag(node), fp: fingerprint(node), ...(node.textContent!.length < 400 && !anchor.quote ? { text: short(node.textContent, 80) } : {}) } : {};
@@ -1428,6 +1469,10 @@ export function zoneAnchor({ x0, y0, x1, y1 }) {
   const right = Math.max(x0, x1);
   const bottom = Math.max(y0, y1);
   const anchor = anchorAt((left + right) / 2, (top + bottom) / 2);
+  // An area on a picture of a board: its two corners on the picture itself (the board knows the picture's file and size).
+  const corner = (window as unknown as { __labBoard?: { anchor?: (x: number, y: number) => Anchor } }).__labBoard?.anchor;
+  const [p, q] = anchor.kind === 'board' && anchor.nw && corner ? [corner(left, top), corner(right, bottom)] : [];
+  if (p && q && p.frame === anchor.frame && q.frame === anchor.frame) Object.assign(anchor, { imgX: p.imgX, imgY: p.imgY, imgX2: q.imgX, imgY2: q.imgY });
   delete anchor.sx; // an area is stored on its box, as shares of it
   let box = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).find((n) => n !== host && !host.contains(n));
   // The area is on the smallest element that holds most of it (80%): a narrow strip drawn a little past a picture's

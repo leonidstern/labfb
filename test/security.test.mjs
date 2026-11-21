@@ -8,8 +8,9 @@ import path from 'node:path';
 import http from 'node:http';
 import { createHmac } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { claimPort, tmp, rm, spawnLab, sleep, serverJson } from './harness.mjs';
+import { claimPort, tmp, rm, spawnLab, sleep, serverJson, agentCall } from './harness.mjs';
 import { apiOn } from '../lib/dev.ts';
+import { png } from './pictures.mjs';
 
 const REPO = fileURLToPath(new URL('..', import.meta.url));
 const OWNER = 'owner-secret-0123456789abcdef';
@@ -379,6 +380,149 @@ test('sections: a guest needs a pass, and with one reads and writes like anybody
   assert.equal((await asGuest({ cookie, origin: 'https://evil.example' }, look)).status, 403, "and the pass doesn't open it to other sites");
 });
 
+test("a guest's copy of the agent's text has no path of this computer and no file names of the project", { skip: !lan && 'no local network address to come in on' }, async () => {
+  const own = `http://localhost:${WPORT}`;
+  await wifiToken(); // the lab is up
+  const pin = await wraw('/_lab/api/comments', { method: 'POST', headers: { origin: own, 'content-type': 'application/json' }, body: JSON.stringify({ page: '/index', name: 'Leo', text: 'bigger', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, docX: 0.1, docY: 1, width: 1000, element: '<h1>', text: 'wifi page', source: 'src/Hero.jsx:12', usedAt: 'src/App.jsx:3' } }) });
+  assert.equal(pin.status, 201, pin.text);
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const as = (p, headers = {}) => wraw(p, { host: lan, headers: { origin: `http://${lan}:${WPORT}`, ...headers } });
+  const secret = /Hero\.jsx|App\.jsx|index\.html|file:|run in/;
+  // the owner's own text has them
+  const mine = (await wraw('/_lab/agent/index')).text;
+  assert.match(mine, /^file: index\.html$/m);
+  assert.match(mine, /in file: index\.html:/);
+  assert.match(mine, /run in /);
+  assert.match((await wraw('/_lab/api/comments?page=/index&format=text')).text, /written at: src\/Hero\.jsx:12/);
+  // a guest's does not: the words, the page and the spot stay
+  for (const p of ['/_lab/agent/index', '/_lab/api/comments?page=/index&format=text']) {
+    const r = await as(p, { cookie });
+    assert.equal(r.status, 200, p);
+    assert.match(r.text, /comment: bigger/, p);
+    assert.doesNotMatch(r.text, secret, p);
+    assert.equal(r.text.includes(WDIR), false, `${p} names the folder`);
+  }
+  assert.equal((await as('/_lab/agent/index')).status, 403, 'and without a pass, the gate');
+});
+
+test('a device with a pass puts a picture on a board like the owner (the frame says it is a guest\'s); no pass, or from another site, is refused', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const own = `http://localhost:${WPORT}`;
+  const seed = await wraw('/_lab/api/board?name=guests', { method: 'PUT', headers: { origin: own, 'content-type': 'application/json' }, body: JSON.stringify({ frames: [{ id: 'a', src: '/index', w: 1440, h: 900 }] }) });
+  assert.equal(seed.status, 200, seed.text);
+  const dir = path.join(WDIR, '.lab/boards/guests');
+  const send = (q, body, headers = {}) => wraw(`/_lab/api/image?${q}`, { host: lan, method: 'POST', body, headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'image/png', ...headers } });
+  assert.equal((await send('board=guests', png())).status, 403, 'no pass: the gate');
+  assert.equal(fs.existsSync(dir), false, 'and nothing is written');
+  assert.equal((await send('board=guests', png(), { cookie, origin: 'https://evil.example' })).status, 403, "the pass doesn't open it to other sites");
+  assert.equal((await send('board=nowhere', png(), { cookie })).status, 404, 'no board and no page to make one of: not found, as for the owner');
+  const first = await send('board=guests&x=5&y=5', png(40, 30), { cookie });
+  assert.equal(first.status, 200, first.text);
+  const frame = JSON.parse(first.text).frame;
+  assert.deepEqual([frame.kind, frame.guest, frame.file], ['image', true, 'b.png']);
+  assert.match((await wraw('/_lab/agent/_board/guests')).text, /pasted image \.lab\/boards\/guests\/b\.png from a wifi guest/, 'the agent is told who it came from');
+  assert.equal((await send('board=guests', Buffer.concat([png(), Buffer.alloc(4 * 1024 * 1024)]), { cookie })).status, 200, 'a guest may put 4 MB, as the owner may');
+  assert.equal((await send('board=guests', undefined, { cookie, 'content-length': String(25 * 1024 * 1024 + 1) })).status, 413, 'and both are held to 25 MB (by its length, before a byte is read)');
+  assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith('.png')).length, 2);
+});
+
+test('a guest adds pictures like the owner: more than 20, until the board is at its 60, and an archived picture frees a place', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const own = `http://localhost:${WPORT}`;
+  const put = (body) => wraw('/_lab/api/board?name=cap', { method: 'PUT', headers: { origin: own, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  assert.equal((await put({ frames: [{ id: 'a', src: '/index', w: 1440, h: 900 }] })).status, 200);
+  const send = () => wraw('/_lab/api/image?board=cap', { host: lan, method: 'POST', body: png(), headers: { origin: `http://${lan}:${WPORT}`, 'content-type': 'image/png', cookie } });
+  for (let i = 0; i < 59; i++) assert.equal((await send()).status, 200, `picture ${i + 1}`);
+  const full = await send();
+  assert.equal(full.status, 422, 'the 61st frame');
+  assert.match(JSON.parse(full.text).error, /at most 60 frames/);
+  const board = JSON.parse((await wraw('/_lab/api/board?name=cap')).text);
+  assert.equal(board.frames.length, 60);
+  assert.ok(board.frames.slice(1).every((f) => f.guest === true), "each is marked as a guest's");
+  assert.equal((await put({ rev: board.rev, frames: board.frames.map((f) => (f.id === 'b' ? { ...f, state: 'archived' } : f)) })).status, 200, 'the owner archives one');
+  assert.equal((await send()).status, 200, 'its place is free');
+  assert.equal((await send()).status, 422, 'and the board is full again');
+});
+
+test('a guest with a pass may attach a picture to a comment and see it; without a pass, neither', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const as = (p, { method = 'GET', body, headers = {} } = {}) => wraw(p, { host: lan, method, body, headers: { origin: `http://${lan}:${WPORT}`, ...headers } });
+  assert.equal((await as('/_lab/api/image', { method: 'POST', body: png(), headers: { 'content-type': 'image/png' } })).status, 403, 'no pass: the gate');
+  const up = await as('/_lab/api/image', { method: 'POST', body: png(9, 7), headers: { 'content-type': 'image/png', cookie } });
+  assert.equal(up.status, 201, up.text);
+  const { token } = JSON.parse(up.text);
+  const say = await as('/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ page: '/index', name: 'Mira', text: 'see', attachments: [token], anchor: { kind: 'page', selector: 'h1', x: 0.1, y: 0.1, docX: 1, docY: 1, width: 1000, element: '<h1>' } }) });
+  assert.equal(say.status, 201, say.text);
+  const c = JSON.parse(say.text).comment;
+  assert.deepEqual(c.images.map((i) => [i.w, i.h]), [[9, 7]]);
+  assert.equal(c.from, 'wifi guest');
+  assert.equal((await as(`/_lab/attachments/${c.id}-1.png`, { headers: { cookie } })).status, 200, 'a guest with a pass sees it');
+  assert.equal((await as(`/_lab/attachments/${c.id}-1.png`)).status, 403, 'a guest without one gets the gate');
+});
+
+// A device that holds a pass is the owner's own (Leo, 21 Nov: "guest is always me, just from another device"): it may do
+// what this computer's browser may, except what changes the machine or its settings.
+test('a device with a pass is the owner: board and picture actions, comment admin and "Do it"; the machine stays this computer\'s', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const mac = `http://localhost:${WPORT}`;
+  const phone = `http://${lan}:${WPORT}`;
+  const token = await wifiToken();
+  const ownerKey = serverJson(WDIR).token;
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const dev = (p, { method = 'GET', body, headers = {} } = {}) => wraw(p, { host: lan, method, body: typeof body === 'string' || !body || Buffer.isBuffer(body) ? body : JSON.stringify(body), headers: { origin: phone, ...(method !== 'GET' && !Buffer.isBuffer(body) ? { 'content-type': 'application/json' } : {}), cookie, ...headers } });
+  const asMac = (p, { method = 'GET', body, headers = {} } = {}) => wraw(p, { method, body: body && JSON.stringify(body), headers: { origin: mac, 'content-type': 'application/json', ...headers } });
+  const json = (r) => JSON.parse(r.text);
+
+  // ---- boards and pictures: the same as this computer
+  assert.equal((await dev('/_lab/api/image?board=phoneboard&page=/index&x=10&y=10', { method: 'POST', body: png(), headers: { 'content-type': 'image/png' } })).status, 200, 'a picture makes the board of a page that has none');
+  const put = (rev, frames) => dev('/_lab/api/board?name=phoneboard', { method: 'PUT', body: { rev, frames } });
+  const stored = json(await dev('/_lab/api/board?name=phoneboard'));
+  assert.deepEqual(stored.frames.map((f) => [f.id, f.guest === true]), [['a', false], ['b', true]], 'its picture says it came from a wifi guest');
+  assert.equal((await put(stored.rev, stored.frames.map((f) => (f.id === 'b' ? { ...f, label: 'mine' } : f)))).status, 200, 'replaces the board');
+  const again = json(await dev('/_lab/api/board?name=phoneboard'));
+  assert.equal((await put(again.rev, again.frames.map((f) => (f.id === 'b' ? { ...f, state: 'archived' } : f)))).status, 200, 'archives a frame');
+  assert.equal((await dev('/_lab/api/board', { method: 'POST', body: { action: 'new', topic: 'From my phone', of: '/index' } })).status, 200, 'board new');
+  assert.equal((await dev('/_lab/api/board', { method: 'POST', body: { action: 'pick', name: 'phoneboard', frames: ['a'] } })).status, 200, 'board pick');
+  assert.equal((await dev('/_lab/api/image', { method: 'POST', body: png(), headers: { 'content-type': 'image/png' } })).status, 201, 'a comment picture');
+
+  // ---- comments: admin as this computer is
+  const anchor = { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, docX: 0.1, docY: 1, width: 1000, element: '<h1>' };
+  const pin = json(await asMac('/_lab/api/comments', { method: 'POST', body: { page: '/index', name: 'Leo', text: 'made on the Mac', anchor } })).comment;
+  const list = json(await dev('/_lab/api/comments?page=/index'));
+  assert.equal(list.admin, true, 'the page is told it is an admin (resolve, delete and move show)');
+  const act = (action, extra = {}) => dev('/_lab/api/comments', { method: 'POST', body: { page: '/index', action, id: pin.id, ...extra } });
+  assert.equal((await act('resolve')).status, 200, 'resolve a pin it did not make');
+  assert.equal((await act('reopen')).status, 200, 'reopen');
+  assert.equal((await act('move', { anchor: { ...anchor, selector: 'p' } })).status, 200, 'move');
+  const agent = agentCall(WPORT, () => serverJson(WDIR).agent);
+  const asked = json(await { then: (f) => agent('/_lab/api/comments', { page: '/index', name: 'Claude', text: 'which one?', anchor }, 's1').then((r) => f({ text: r.text })) }).comment;
+  const doit = json(await dev('/_lab/api/comments', { method: 'POST', body: { page: '/index', name: 'Mira', text: 'x', parent: asked.id, doit: true } })).comment;
+  assert.equal(doit.doit, true, '"Do it" under the agent\'s pin');
+  assert.equal(doit.from, 'wifi guest', 'and the agent still reads where it came from');
+  assert.equal((await act('delete')).status, 200, 'delete');
+
+  // ---- what stays with this computer
+  assert.equal((await dev('/_lab/labs', { method: 'POST', body: { action: 'archive', port: WPORT } })).status, 403, 'stop or archive a lab');
+  assert.equal((await dev('/_lab/rule', { method: 'POST', body: { page: '/index', id: asked.id, action: 'keep' } })).status, 403, 'keep an agent-offered rule');
+  assert.equal((await dev('/_lab/me', { method: 'POST', body: { name: 'Someone' } })).status, 403, 'rename');
+  assert.equal((await dev('/_lab/wait', { headers: {} })).status, 403, 'listen as the agent');
+  assert.equal((await dev('/_lab/invite', { method: 'POST', body: {} })).status, 403, 'mint a link');
+  const page = (await dev('/')).text;
+  assert.doesNotMatch(page, /data-admin=/, "the admin key never reaches the device's page");
+  assert.doesNotMatch(page, new RegExp(ownerKey), 'nor the key itself');
+  assert.match((await wraw('/')).text, /data-admin=/, 'while this computer\'s page has it');
+
+  // ---- without a pass, or from another site: refused
+  const bare = (p, o = {}) => wraw(p, { host: lan, method: o.method || 'POST', body: JSON.stringify(o.body || {}), headers: { origin: phone, 'content-type': 'application/json', ...(o.headers || {}) } });
+  for (const [p, body] of [['/_lab/api/board?name=phoneboard', { rev: 1, frames: [] }], ['/_lab/api/board', { action: 'new', topic: 'x' }], ['/_lab/api/comments', { page: '/index', action: 'resolve', id: 'x' }]]) {
+    assert.equal((await bare(p, { method: p.includes('name=') ? 'PUT' : 'POST', body })).status, 403, `${p}: no pass, the gate`);
+  }
+  assert.equal((await wraw('/_lab/api/image?board=phoneboard', { host: lan, method: 'POST', body: png(), headers: { origin: phone, 'content-type': 'image/png' } })).status, 403, 'no pass, no picture');
+  for (const [p, o] of [['/_lab/api/board', { method: 'POST', body: { action: 'new', topic: 'x' } }], ['/_lab/api/comments', { method: 'POST', body: { page: '/index', action: 'resolve', id: 'x' } }], ['/_lab/api/image?board=phoneboard', { method: 'POST', body: png(), headers: { 'content-type': 'image/png' } }]]) {
+    assert.equal((await dev(p, { ...o, headers: { ...(o.headers || {}), origin: 'https://evil.example' } })).status, 403, `${p}: the pass does not open it to other sites`);
+  }
+  void token;
+});
+
 test('a one-time link works once, and an unknown one never', async () => {
   const path_ = new URL((await invite())[0]).pathname;
   const first = await wraw(path_);
@@ -397,23 +541,6 @@ test('a guest on the wifi sees the gate until they open a link', { skip: !lan &&
   assert.equal((await wraw('/', { host: lan, headers: { cookie } })).status, 200, 'in with the cookie');
   const forged = cookie.slice(0, -1) + (cookie.endsWith('0') ? '1' : '0'); // always one character off the real one
   assert.equal((await wraw('/', { host: lan, headers: { cookie: forged } })).status, 403, 'a forged cookie');
-});
-
-test('a guest makes a pin\'s own board (+board) for a pin that is there, and does nothing else on the board API', { skip: !lan && 'no local network address to come in on' }, async () => {
-  const r = await wraw(new URL((await invite())[0]).pathname, { host: lan });
-  const cookie = String(r.cookie).split(';')[0];
-  const headers = { cookie, origin: `http://${lan}:${WPORT}`, 'content-type': 'application/json' };
-  const as = (body) => wraw('/_lab/api/board', { host: lan, method: 'POST', body: JSON.stringify(body), headers });
-  const pin = await wraw('/_lab/api/comments', { host: lan, method: 'POST', headers, body: JSON.stringify({ page: '/index', name: 'Mira', text: 'like these', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5 } }) });
-  assert.equal(pin.status, 201, pin.text);
-  const id = JSON.parse(pin.text).comment.id;
-  const none = 'a'.repeat(12);
-  assert.equal((await as({ action: 'new', name: `pin-${none}`, of: `/index#pin-${none}` })).status, 403, 'no such pin');
-  assert.equal((await as({ action: 'new', name: `pin-${id}`, of: '/index' })).status, 403, 'not about that pin');
-  assert.equal((await as({ action: 'new', name: 'mine', of: '/index' })).status, 403, 'any other board');
-  assert.equal((await as({ action: 'list' })).status, 403);
-  assert.equal((await as({ action: 'new', name: `pin-${id}`, of: `/index#pin-${id}` })).status, 200);
-  assert.equal((await as({ action: 'ready', name: `pin-${id}` })).status, 200);
 });
 
 test('a guest who keeps using the lab stays in: a pin or a mark renews the pass, not only a page load', { skip: !lan && 'no local network address to come in on' }, async () => {

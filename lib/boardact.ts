@@ -2,7 +2,8 @@
 // one is run, so a lab that only serves boards does not read it.
 import fs from 'node:fs';
 import path from 'node:path';
-import { MAX_FRAMES, NAME, heightFor, labPath, names, nameOf, one, read, save, frameFile, writeAtomic, type Board, type Frame } from './board.ts';
+import { imageInfo, MAX_IMAGE } from './images.mjs';
+import { MAX_FRAMES, NAME, addImage, counted, heightFor, insert, nextId, labPath, names, nameOf, one, read, save, frameFile, writeAtomic, type Board, type Frame } from './board.ts';
 
 export const MAX_VARIANTS = 6;
 /** The query parameter that tells a live page which variant it is drawing (boards of a page that cannot be copied). */
@@ -11,10 +12,6 @@ const live = (f: Frame) => f.src.includes(`?${VARIANT}=`);
 const LIVE_SAID = `Each variant frame is the live page with ?${VARIANT}=<frame>; branch on new URLSearchParams(location.search).get('${VARIANT}') in the page's source (frame a is the page as it is: leave it). Remove the branching when one is picked.`;
 /** The text a person gave, as a board name: "Pricing hero" is pricing-hero. */
 export const slug = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'board';
-const idOf = (n: number) => (n < 26 ? String.fromCharCode(97 + n) : `z${n - 24}`);
-export const nextId = (frames: Frame[]) => {
-  for (let n = frames.length; ; n++) if (!frames.some((f) => f.id === idOf(n))) return idOf(n);
-};
 const route = (name: string, id: string) => `/_lab/board/${name}/${id}`;
 
 /** A plain page as a variant: the same page, its relative links kept by a base at the page's own folder. */
@@ -27,6 +24,10 @@ export const seed = (html: string, rel: string) => {
 };
 
 // ---------- what an agent reads ----------
+/** What a frame is called to an agent: a picture says its file, a copy its .html, a page its path. */
+export const shown = (b: Board, f: Frame) => (f.kind === 'image' ? `pasted image .lab/boards/${b.name}/${f.file}${f.guest ? ' from a wifi guest' : ''}` : f.src.startsWith('/_lab/') ? `${f.id}.html` : f.src);
+/** A frame's size: a picture says its file's own pixels first. */
+export const sized = (f: Frame) => `${f.kind === 'image' ? `${f.iw}×${f.ih} px shown at ` : ''}${f.w}×${f.h}`;
 /** Where a board is opened: over its page when it is about one this lab has (one set of pins, the page's), else at its own address. */
 export const where = (origin: string, b: Board, home?: boolean) => (home && b.of ? `${origin}${b.of.split('#')[0]}#board=${b.name}` : `${origin}/_lab/board/${b.name}`);
 /** The board as plain text: one line per frame, in order. `pins(frame)` is its open pins. */
@@ -34,11 +35,11 @@ export function text(b: Board, o: { origin: string; file?: string | null; json?:
   const lines = [`# Board ${b.name}${b.title ? ` · ${b.title}` : ''}`, `url: ${where(o.origin, b, o.home)}${o.home ? ' (the board opens over its page: its pins are that page\'s)' : ''}`];
   if (b.of) lines.push(`of: ${b.of.replace('#', ' #')}${o.file ? ` (file ${o.file})` : ''}`);
   if (o.json) lines.push(`file: .lab/boards/${b.name}.json`);
-  if (b.frames.some((f) => f.src.startsWith('/_lab/'))) lines.push(`folder: .lab/boards/${b.name}/ (edit a frame's file; it reloads)`);
+  if (b.frames.some((f) => f.src.startsWith('/_lab/') && f.kind !== 'image')) lines.push(`folder: .lab/boards/${b.name}/ (edit a frame's file; it reloads)`);
   if (b.frames.some(live)) lines.push(LIVE_SAID);
   for (const f of b.frames) {
     const open = o.pins?.(f) || 0;
-    lines.push([f.id, f.src.startsWith('/_lab/') ? `${f.id}.html` : f.src, `${f.w}×${f.h}`, f.label && `"${f.label}"`, f.variantOf && `variant of ${f.variantOf}`, f.state && f.state !== 'live' && f.state, open && `${open} open`].filter(Boolean).join('  '));
+    lines.push([f.id, shown(b, f), `${f.w}×${f.h}`, f.label && `"${f.label}"`, f.variantOf && `variant of ${f.variantOf}`, f.state && f.state !== 'live' && f.state, open && `${open} open`].filter(Boolean).join('  '));
   }
   return lines.join('\n') + '\n';
 }
@@ -46,8 +47,8 @@ export function text(b: Board, o: { origin: string; file?: string | null; json?:
 export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   const beside = b.frames.filter((g) => g.id !== f.id && g.state !== 'archived').map((g) => g.id);
   const gone = b.frames.filter((g) => g.state === 'archived').map((g) => g.id);
-  const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, `${f.w}×${f.h}`, f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
-  const copy = (g: Frame) => g.src.startsWith('/_lab/');
+  const line = `frame: ${f.id} of board ${b.name} (${[b.of && `variant of ${b.of.replace('#', ' #')}`, sized(f), f.guest && 'from a wifi guest', f.label && `"${f.label}"`, beside.length && `beside ${beside.slice(0, 6).join(', ')}`].filter(Boolean).join(', ')})`;
+  const copy = (g: Frame) => g.src.startsWith('/_lab/') && g.kind !== 'image';
   const others = b.frames.filter((g) => g.id !== f.id);
   const page = file || b.of?.split('#')[0] || 'the page';
   // What to do about the pick. A copy's change goes into the page; a live variant's code is a branch in the page's own
@@ -56,7 +57,9 @@ export const frameLine = (b: Board, f: Frame, file?: string | null) => {
   const gonecopies = b.frames.filter((g) => g.state === 'archived' && copy(g)).map((g) => g.id);
   const gonelive = b.frames.some((g) => g.state === 'archived' && live(g));
   const done = 'resolve it with no words (resolve <id>).';
-  const put = live(f)
+  const put = f.kind === 'image'
+    ? `${f.id} is a pasted image (${shown(b, f).slice('pasted image '.length)}): make ${page} match it, then ${done}`
+    : live(f)
     ? `Keep the ${f.id} branch (?${VARIANT}=${f.id}) in ${page}'s source and remove the ${VARIANT} branching, then ${done}`
     : copy(f) || !others.some((g) => copy(g) || live(g))
       ? `Put ${f.id}'s change into ${page}, then ${done}`
@@ -72,10 +75,6 @@ export type Done = { text: string; board?: Board; picked?: Frame; error?: string
 
 const no = (error: string): Done => ({ text: error, error });
 const frameOf = (b: Board, id: unknown) => b.frames.find((f) => f.id === id);
-const insert = (b: Board, f: Frame, after?: string) => {
-  const at = after ? b.frames.findIndex((g) => g.id === after) : -1;
-  b.frames.splice(at < 0 ? b.frames.length : at + 1, 0, f);
-};
 const copyIn = (e: Env, name: string, id: string, html: string) => writeAtomic(frameFile(e.root, name, id), html);
 
 /** One command's work (new, add, move, pick) on the stored board; the answer is what the agent reads. */
@@ -153,12 +152,22 @@ export function act(action: string, a: Ask, e: Env): Done {
       }
       return done(`Changed ${had.id}.`);
     }
-    if (b.frames.length >= MAX_FRAMES) return no(`A board holds at most ${MAX_FRAMES} frames.`);
+    if (counted(b.frames) >= MAX_FRAMES) return no(`A board holds at most ${MAX_FRAMES} frames.`);
     const id = nextId(b.frames);
     const f: Frame = { id, src: '', w: w ?? 1280, h: 0, state: 'live', ...(a.label ? { label: one(a.label, 80) } : {}) };
     // /cart is a path on this lab, below the lab's folder (path.resolve would read it from the disk's root: "/" always exists there).
     const file = t.startsWith('/') ? path.join(e.root, t) : path.resolve(e.root, t);
-    if (labPath(t) && !(fs.existsSync(file) && fs.statSync(file).isFile())) f.src = t;
+    const isFile = Boolean(t) && fs.existsSync(file) && fs.statSync(file).isFile();
+    // A picture: its bytes say what it is (never the name), read once. The lab copies it into the board's folder as a frame of its own.
+    const size = isFile ? fs.statSync(file).size : 0;
+    if (isFile && size > MAX_IMAGE && /\.(png|jpe?g|webp|gif)$/i.test(t)) return no(`${t}: a picture is at most ${MAX_IMAGE / 1048576} MB.`);
+    const bytes = isFile && size <= MAX_IMAGE ? fs.readFileSync(file) : null;
+    const pic = bytes && imageInfo(bytes);
+    if (bytes && pic) {
+      const added = addImage(e.root, b, bytes, pic, undefined, { label: a.label, after: a.after });
+      return 'error' in added ? no(added.error) : { text: `Added ${added.frame.id} (${shown(b, added.frame)})${a.after ? ` after ${a.after}` : ''}.`, board: b };
+    }
+    if (labPath(t) && !isFile) f.src = t;
     else {
       if (!t || !/\.html?$/i.test(file) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) return no(`${t || 'nothing'}: give a frame id, a page like /cart, or an .html file to copy in.`);
       copyIn(e, b.name, id, fs.readFileSync(file, 'utf8'));
@@ -188,7 +197,7 @@ export function act(action: string, a: Ask, e: Env): Done {
     if (same) return { text: `${ids.join(', ')} is already ${ids.length === 1 ? 'picked' : 'kept'}.`, board: b };
     for (const f of b.frames) f.state = ids.includes(f.id) ? (ids.length === 1 ? 'picked' : 'live') : 'archived';
     const gone = b.frames.filter((f) => f.state === 'archived').map((f) => f.id);
-    return done(`${ids.length === 1 ? `Picked ${ids[0]}` : `Kept ${ids.join(', ')}`}.${gone.length ? ` Archived ${gone.join(', ')}${b.frames.some((f) => gone.includes(f.id) && f.src.startsWith('/_lab/')) ? ' (files kept)' : ''}.` : ''}`, ids.length === 1 ? { picked: frameOf(b, ids[0]) } : {});
+    return done(`${ids.length === 1 ? `Picked ${ids[0]}` : `Kept ${ids.join(', ')}`}.${gone.length ? ` Archived ${gone.join(', ')}${b.frames.some((f) => gone.includes(f.id) && f.src.startsWith('/_lab/') && f.kind !== 'image') ? ' (files kept)' : ''}.` : ''}`, ids.length === 1 ? { picked: frameOf(b, ids[0]) } : {});
   }
   return no(`Unknown board action ${action}. Use new, add, move, pick or list.`);
 }

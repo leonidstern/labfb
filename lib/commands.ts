@@ -156,7 +156,7 @@ export async function runCommand({ pos, opts, HERE, CMD, ME, die }: Ctx): Promis
     const [, action, first, ...rest] = pos;
     const lab = myLab();
     const arg = action === 'new' ? { topic: [first, ...rest].filter(Boolean).join(' ') } : action === 'list' ? { name: first } : action === 'pick' ? { name: first, frames: rest } : action === 'move' ? { name: first, frame: rest[0] } : { name: first, target: rest[0] };
-    if (!['new', 'add', 'move', 'pick', 'list'].includes(action)) die(`Usage: ${CMD} board new "<topic>" [--of /page] [--variants 3 | --widths 390,820,1280 | --flow /a,/b] | add <board> <frame|/page|file.html> [--label "…"] [--width N] [--after <frame>] | move <board> <frame> --after <frame> (or --first) | pick <board> <frame>… | list [<board>]`);
+    if (!['new', 'add', 'move', 'pick', 'list'].includes(action)) die(`Usage: ${CMD} board new "<topic>" [--of /page] [--variants 3 | --widths 390,820,1280 | --flow /a,/b] | add <board> <frame|/page|file.html|image> [--label "…"] [--width N] [--after <frame>] | move <board> <frame> --after <frame> (or --first) | pick <board> <frame>… | list [<board>]`);
     const out = await labCall(lab.server, '/_lab/api/board', { action, ...arg, of: opts.of, variants: opts.variants, widths: opts.widths, flow: opts.flow, label: opts.label, width: opts.width, after: opts.after, first: opts.first }, mySession(opts.name, opts.model)).catch(() => null);
     if (!out) die(`The lab server for ${lab.dir} isn't running. Start it: ${CMD}`);
     let said = out.text;

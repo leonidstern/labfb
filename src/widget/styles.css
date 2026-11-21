@@ -266,6 +266,7 @@ button.btn.undo { color: var(--_fg); }
 .box textarea { grid-area: text; width: 100%; border: 0; background: none; padding: 2px 0; line-height: 20px; margin: 0; resize: none;
                 min-height: 0; max-height: min(200px, max(80px, 30vh)); overflow-y: auto; outline: none; display: block; field-sizing: content; } /* it grows with its words, no script */
 .box textarea::placeholder, .who input::placeholder { color: var(--_muted); opacity: 1; }
+.box textarea::placeholder { white-space: nowrap; text-overflow: ellipsis; } /* one line, cut with … on a box too narrow: a wrapped second line was half hidden */
 .line { grid-area: line; height: 0; border-top: var(--_hair); margin: 0 -7px 0 -14px; display: none; }
 .who { grid-area: who; display: none; align-items: baseline; gap: 4px; min-width: 0; }
 .who * { font-size: 13px; letter-spacing: -.006em; }
@@ -291,6 +292,9 @@ button.btn.undo { color: var(--_fg); }
 /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
 .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
 .send * { color: inherit; }
+.act { grid-area: send; display: flex; align-items: center; gap: 4px; }
+.clip { width: 24px; height: 24px; border: 0; border-radius: 50%; padding: 0; background: none; color: var(--_muted); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
+.clip:hover { color: var(--_fg); }
 .error { color: var(--_red); font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }
@@ -656,7 +660,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chat-btn.stale .mark { opacity: .4; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
   .chat-btn[data-agent=working] .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
-  .send { width: 36px; height: 36px; position: relative; }
+  .send, .clip { width: 36px; height: 36px; position: relative; }
   .send::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; } /* 44 pt to hit, 36 to see */
   .send .arr { width: 17px; height: 15px; margin: auto; }
 }

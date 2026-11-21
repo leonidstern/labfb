@@ -198,3 +198,18 @@ test('a pin\'s "board" field can\'t make the lab touch a file outside .lab/board
   const moved = Object.entries(files).filter(([, f]) => !fs.existsSync(f)).map(([name, f]) => `${name}: ${path.basename(f)} is now ${fs.readdirSync(path.dirname(f)).find((n) => n.startsWith(path.basename(f)))}`);
   assert.deepEqual(moved, [], victim.out().split('\n').filter((l) => /damaged/.test(l)).join(' | '));
 });
+
+test('words cut to their size never end in half an emoji (U+FFFD) in the agent text: the 40 around selected words, an attribute cut inside a tag, a missing file named with line separators', async () => {
+  const E = '\u{1F600}';
+  // A browser's own cut by count can leave half an emoji at either end (the widget cuts the words around a selection at 40, an attribute's value at 60).
+  const half = E.slice(1); // the second half of a pair, a lone surrogate
+  const r = await send({ page: '/index', name: 'Eve', text: 'selected', anchor: { kind: 'text', selector: 'h1', x: 0.5, y: 0.5, element: `<h1 data-x="${'a'.repeat(57)}${E.slice(0, 1)}">`, quote: { exact: `${E}words${E}`, prefix: `${half}${'b'.repeat(39)}`, suffix: `${E.repeat(30)}` } } });
+  assert.equal(r.status, 201);
+  const text = (await raw(PORT, '/_lab/agent/index')).text;
+  assert.ok(!text.includes('�'), 'no U+FFFD in the text');
+  const mine = text.slice(text.indexOf(`· id ${r.json.comment.id}`));
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(mine), 'no lone surrogate in it');
+  assert.ok(mine.includes(E.repeat(20)), 'the whole emoji that fit are there (40 units: 20)');
+  assert.ok(!mine.includes(E.repeat(21)), 'and no more');
+  await send({ page: '/index', action: 'resolve', id: r.json.comment.id }, { 'x-lab-admin': lab.keys().token });
+});

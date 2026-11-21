@@ -9,7 +9,7 @@
 import { clamp, fitAll, fitFrame, panBy, zoomAt } from './camera.ts';
 import type { Cam, Box } from './camera.ts';
 
-type Frame = { id: string; src: string; w: number; h: number; x: number; y: number; label?: string; state?: string; variantOf?: string };
+type Frame = { id: string; src: string; kind?: string; file?: string; iw?: number; ih?: number; guest?: boolean; w: number; h: number; x: number; y: number; label?: string; state?: string; variantOf?: string };
 type Board = { rev: number; frames: Frame[]; of?: string } & Record<string, unknown>;
 type Card = { f: Frame; box: HTMLElement; inner: HTMLElement; frame?: HTMLIFrameElement; seen: number };
 type Spot = { left: number; top: number; zone: null; clipped?: boolean };
@@ -39,7 +39,7 @@ const css = `
 #lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
 #lab-board .f.off{content-visibility:hidden}
 #lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
-#lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
+#lab-board iframe,#lab-board img{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
@@ -50,9 +50,14 @@ const css = `
 #lab-board .zm{position:absolute;right:max(10px,env(safe-area-inset-right));top:10px;z-index:5;display:flex;flex-direction:row-reverse;align-items:center;gap:2px;font:500 12px/1 system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums;color:inherit}
 #lab-board .zm button{font:inherit;color:inherit;background:none;border:0;border-radius:999px;padding:6px 8px;cursor:pointer;opacity:.55}
 #lab-board .zm button:hover,#lab-board .zm.open button{opacity:1;background:rgba(0,0,0,.06)}
+#lab-board .zm .zi{white-space:nowrap}
 #lab-board .zm .zo{min-width:3.2em;text-align:right}
 #lab-board .zm:not(.open) .zc{display:none}
 @media (prefers-color-scheme:dark){#lab-board .zm button:hover,#lab-board .zm.open button{background:rgba(255,255,255,.08)}}
+#lab-board img{object-fit:contain}
+#lab-board.drop{outline:2px solid #1f7a4d;outline-offset:-2px}
+#lab-board .ghost{position:absolute;width:200px;height:120px;margin:-60px 0 0 -100px;display:grid;place-items:center;border:calc(1px*var(--iz,1)) dashed currentColor;background:rgba(127,127,127,.12);font-size:calc(14px*var(--iz,1));opacity:.8;pointer-events:none}
+#lab-board .note{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 32px);padding:8px 12px;border-radius:8px;background:#1d1d1b;color:#fff;pointer-events:none}
 #lab-board .done{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
 
@@ -228,7 +233,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const r = near(c);
       return Math.hypot((r.l + r.r) / 2 - view.w / 2, (r.t + r.b) / 2 - view.h / 2);
     };
-    const want = seen.filter((c) => !c.frame && c.f.w * cam.z >= WAKE).sort((a, b) => dist(a) - dist(b));
+    const want = seen.filter((c) => !c.frame && c.f.kind !== 'image' && c.f.w * cam.z >= WAKE).sort((a, b) => dist(a) - dist(b));
     const alive = () => cards.filter((c) => c.frame);
     for (const c of want) {
       if (loading() >= AT_ONCE) break;
@@ -262,7 +267,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   }
 
   // ---------- frames in the world ----------
-  const label = (f: Frame) => `${f.label || f.src} · ${f.w} × ${f.h}`;
+  const label = (f: Frame) => `${f.label || (f.kind === 'image' ? f.file : f.src)} · ${f.w} × ${f.h}`;
   function show(b: Board) {
     if (signal.aborted) return;
     of = of || (b.of || '').split('#')[0];
@@ -276,7 +281,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const was = old.get(f.id);
       old.delete(f.id);
       if (was && was.f.src === f.src) {
-        if (!was.frame && (was.f.w !== f.w || was.f.h !== f.h)) was.inner.replaceChildren(card({ ...was, f }));
+        if (!was.frame && f.kind !== 'image' && (was.f.w !== f.w || was.f.h !== f.h)) was.inner.replaceChildren(card({ ...was, f }));
         was.f = f;
         return was;
       }
@@ -287,7 +292,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       inner.className = 'b';
       const c: Card = { f, box, inner, seen: 0 };
       box.dataset.id = f.id;
-      inner.appendChild(card(c));
+      inner.appendChild(f.kind === 'image' ? Object.assign(document.createElement('img'), { src: f.src, alt: f.label || '', draggable: false, decoding: 'async', loading: 'lazy' }) : card(c));
       box.append(inner);
       const tag = text('div', '', box);
       tag.className = 't';
@@ -332,7 +337,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
   fetch('/_lab/pages').then((r) => r.json()).then((d) => {
     edited = Object.fromEntries((d.pages || []).map((p: { path: string; edited: string }) => [p.path, p.edited]));
-    for (const c of cards) if (!c.frame) c.inner.replaceChildren(card(c));
+    for (const c of cards) if (!c.frame && c.f.kind !== 'image') c.inner.replaceChildren(card(c));
   }).catch(() => {});
 
   // The label above a frame is only text (a click on it is a click on the board).
@@ -353,7 +358,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   }
   function enter(id: string) {
     const c = find(id);
-    if (!c) return;
+    if (!c || c.f.kind === 'image') return; // a picture is only looked at, never entered
     select(id);
     entered = id;
     select(id); // the ring, now that it is open
@@ -403,7 +408,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const at = (e: { clientX: number; clientY: number }) => {
     const x = lx(e) / cam.z - cam.x;
     const y = ly(e) / cam.z - cam.y;
-    return cards.find((c) => x >= c.f.x && x <= c.f.x + c.f.w && y >= c.f.y && y <= c.f.y + c.f.h)?.f.id || '';
+    return cards.findLast((c) => x >= c.f.x && x <= c.f.x + c.f.w && y >= c.f.y && y <= c.f.y + c.f.h)?.f.id || '';
   };
   const mine = (e: Event) => inside(e, root) || inside(e, handLayer);
   const pts = new Map<number, { x: number; y: number }>();
@@ -440,6 +445,14 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     handLayer?.classList.toggle('grabbing', Boolean(down?.hand));
   };
   const eat = (e: Event) => (e.stopImmediatePropagation(), e.preventDefault());
+  // Where the pointer last was on the board (null once it left: a paste then belongs to what is under it).
+  let last: { x: number; y: number } | null = null;
+  // ⌥ held (a paste event doesn't carry it: the keys before it do): the picture's own comment box opens on it, as ⌥-click opens one.
+  let alt = false;
+  on('keydown', (e: KeyboardEvent) => void (alt = e.altKey), true);
+  on('keyup', (e: KeyboardEvent) => void (alt = e.altKey), true);
+  on('blur', () => void (alt = false));
+  on('pointermove', (e: PointerEvent) => void (last = inBox(e.clientX, e.clientY) ? { x: e.clientX, y: e.clientY } : null), true);
 
   on('pointerdown', (e: PointerEvent) => {
     if (!mine(e) || ours(e) || entered && src(e) instanceof HTMLIFrameElement) return;
@@ -582,7 +595,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   }, true);
 
   // ---------- keys (after the widget's own: an Esc it used is not ours) ----------
-  const typing = (e: KeyboardEvent) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(n.tagName) || n.hasAttribute('data-lab-comments')));
+  const typing = (e: Event, buttons = true) => e.composedPath().some((n) => n instanceof HTMLElement && (n.isContentEditable || (buttons ? /^(INPUT|TEXTAREA|SELECT|BUTTON)$/ : /^(INPUT|TEXTAREA)$/).test(n.tagName) || n.hasAttribute('data-lab-comments')));
   const back = () => opts.back?.();
   // The next (1) or previous (-1) frame in board order, the camera on it.
   const step = (by: number) => {
@@ -632,6 +645,82 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // ---------- what the frames and the widget see ----------
   // By the box as last measured (its size changing, a press, a gesture starting): asked for every pin in every frame.
   const inBox = (x: number, y: number) => x >= ox && x <= ox + view.w && y >= oy && y <= oy + view.h;
+  // ---------- pictures: paste, drop, or "+ image" put one on the board as a frame (this computer's browser only) ----------
+  const note = (t: string) => {
+    const n = text('div', t, root);
+    n.className = 'note';
+    setTimeout(() => n.remove(), 3000);
+  };
+  // One picture to the board at a world point, a ghost there while it goes; the board is read again as soon as it is there.
+  const put = async (file: Blob, wx: number, wy: number, pin = false) => {
+    const ghost = text('div', 'adding image…', world);
+    Object.assign(ghost.style, { left: `${wx}px`, top: `${wy}px` });
+    ghost.className = 'ghost';
+    try {
+      const out = await (await import(new URL('pics.js', import.meta.url).href) as typeof import('../widget/pics.ts')).send<{ frame: { id: string } }>(`?board=${encodeURIComponent(name)}${of ? `&page=${encodeURIComponent(of)}` : ''}&x=${Math.round(wx)}&y=${Math.round(wy)}`, file, 25 * 1024 * 1024, 2400);
+      await load();
+      const c = find(out.frame.id);
+      const r = pin && c?.box.getBoundingClientRect();
+      if (r) boardWidget()?.place(r.left + r.width / 2, r.top + r.height / 2);
+    } catch (err) {
+      note((err as Error).message);
+      return false;
+    } finally {
+      ghost.remove();
+    }
+    return true;
+  };
+  // Pictures one after another; each after the first 40 px down and right of the one before. The first error stops it.
+  const putAll = async (files: Blob[], at?: { x: number; y: number }, pin = false) => {
+    measure();
+    let [wx, wy] = at ? [(at.x - ox) / cam.z - cam.x, (at.y - oy) / cam.z - cam.y] : [view.w / 2 / cam.z - cam.x, view.h / 2 / cam.z - cam.y];
+    for (const f of files.slice(0, 6)) {
+      if (!(await put(f, wx, wy, pin && f === files[0]))) break;
+      wx += 40;
+      wy += 40;
+    }
+  };
+  const pictures = (dt: DataTransfer | null) => [...(dt?.files || [])].filter((f) => f.type.startsWith('image/'));
+  on('paste', (e: ClipboardEvent) => {
+    if (typing(e, false) || entered) return; // a text box, or an open frame (its page gets it), has its own paste
+    const [file] = pictures(e.clipboardData);
+    if (!file) return; // a text paste stays untouched
+    measure();
+    if (!last && !(view.w >= innerWidth - 2 && view.h >= innerHeight - 2)) return; // a half view: the pointer is off the board, the paste is the page's
+    eat(e);
+    void putAll([file], last || undefined, alt);
+  }, true);
+  const files = (e: DragEvent) => e.dataTransfer?.types.includes('Files');
+  on('dragover', (e: DragEvent) => {
+    if (!mine(e) || !files(e) || entered) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'copy';
+    root.classList.add('drop');
+  }, true);
+  on('dragleave', (e: DragEvent) => mine(e) && root.classList.remove('drop'), true);
+  on('drop', (e: DragEvent) => {
+    root.classList.remove('drop');
+    if (!mine(e) || !files(e) || entered) return;
+    e.preventDefault();
+    void putAll(pictures(e.dataTransfer), { x: e.clientX, y: e.clientY }, e.altKey);
+  }, true);
+  const pick = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+  pick.addEventListener('change', () => {
+    void putAll([...(pick.files || [])]);
+    pick.value = '';
+  });
+  const add = Object.assign(document.createElement('button'), { type: 'button', className: 'zi', textContent: '+ image' });
+  add.addEventListener('click', () => pick.click());
+  zoomBox.append(add, pick);
+
+  // Where a point of a picture's frame is on the picture itself: shares of the file's width and height (the picture sits in its
+  // frame whole, centred, so a frame of another shape has bars the point may be on: held to the edge), and the file's name and size.
+  const onPicture = (f: Frame, x: number, y: number) => {
+    const k = Math.min(f.w / f.iw!, f.h / f.ih!);
+    const [dw, dh] = [f.iw! * k, f.ih! * k];
+    const share = (v: number) => Math.min(1, Math.max(0, v));
+    return { file: f.file, nw: f.iw, nh: f.ih, imgX: share((x - (f.w - dw) / 2) / dw), imgY: share((y - (f.h - dh) / 2) / dh) };
+  };
   const boardApi = {
     name,
     back,
@@ -649,8 +738,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       measure();
       const [wx, wy] = [Math.round((sx - ox) / cam.z - cam.x), Math.round((sy - oy) / cam.z - cam.y)];
       const gap = (c: Card) => Math.hypot(Math.max(c.f.x - wx, 0, wx - c.f.x - c.f.w), Math.max(c.f.y - wy, 0, wy - c.f.y - c.f.h));
-      const f = [...cards].sort((a, b) => gap(a) - gap(b))[0]?.f;
-      return { kind: 'board', board: name, ...(f && { frame: f.id, fx: wx - f.x, fy: wy - f.y }), bx: wx, by: wy, selector: '', x: 0, y: 0, docX: 0, docY: 0, width: view.w, height: view.h };
+      const f = [...cards].reverse().sort((a, b) => gap(a) - gap(b))[0]?.f; // (a picture over other frames is on top: the newer one wins a tie)
+      return { kind: 'board', board: name, ...(f && { frame: f.id, fx: wx - f.x, fy: wy - f.y }), ...(f?.kind === 'image' && onPicture(f, wx - f.x, wy - f.y)), bx: wx, by: wy, selector: '', x: 0, y: 0, docX: 0, docY: 0, width: view.w, height: view.h };
     },
     // Where a board pin is, in page px (the pins' layer is the page's): with its frame, else at the point it was put.
     spot: (a: { frame?: string; fx?: number; fy?: number; bx?: number; by?: number }): Spot => {

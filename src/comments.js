@@ -72,6 +72,7 @@ import { bindKeys } from './widget/keys.ts';
   // What the parts in src/widget/ use from here, read when they use it (getters: nothing is read before it exists).
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
+    fade: /** @type {Promise<unknown> | null} */ (null), // set by live.ts while a patched-in save cross-fades: the page can't be hit-tested then (see pinned)
     get $() { return $; },
     get OFF() { return OFF; },
     get isOff() { return isOff; },
@@ -260,6 +261,7 @@ import { bindKeys } from './widget/keys.ts';
 
   S.comments = [];
   S.isAdmin = false;
+  S.mac = Boolean(adminToken); // this computer's own browser holds the key: what only it may do (keeping a rule) is shown there alone
   // Off by default: the page looks clean until someone turns comments on (button or c); remembered per browser.
   S.on = store.get('lab-on') ? store.get('lab-on') === '1' : script?.dataset.on === '1';
   // A board page (src/board/): a tap selects a frame; 1 (comment mode) pins the board.
@@ -361,7 +363,7 @@ import { bindKeys } from './widget/keys.ts';
   bindFramework(W);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), part });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord, render: () => render(), S, root });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -1197,15 +1199,16 @@ import { bindKeys } from './widget/keys.ts';
       }
       const float = el('div', { class: `float${anim}` });
       const box = composer({
-        placeholder: anchor.ink ? `${inkSaid(anchor.ink.mark)} · Enter sends, or add words` : S.unheard ? 'add a comment · no agent listening yet' : 'add a comment', // S.unheard: local labs, set from the lab's state
+        placeholder: anchor.ink ? `${inkSaid(anchor.ink.mark)} · Enter sends, or add words` : S.unheard ? 'comment · no agent yet' : 'add a comment', // S.unheard: local labs, set from the lab's state; short, so on a phone it fits beside "as <name>" and the arrow (the long words wrapped and were cut), and the same wording on a computer (Leo, 21 Nov)
         opened: true, // the comment is already picked and its box open (the actions are one tap away)
         // Made by a hold on a phone: the finger's lift focuses the box (below). Focused before it, Safari could put the
         // cursor in without a keyboard, and the lift's focus then changed nothing (Leo, 19 Nov: "sometimes not in focus").
         autofocus: !S.pinnedByHold,
         draftKey: `lab-typing:${S.page}:new`,
         empty: anchor.ink ? inkSaid(anchor.ink.mark) : '',
-        onSubmit: async (name, said) => {
-          const { comment, edit } = await send({ name, text: said, anchor });
+        attach: true,
+        onSubmit: async (name, said, att) => {
+          const { comment, edit } = await send({ name, text: said, anchor, ...att });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
           if (anchor.act === BOARD_ACT) void pinBoard(comment.id, true, anchor);
           addComment(comment);
@@ -1604,7 +1607,7 @@ import { bindKeys } from './widget/keys.ts';
           setTimeout(() => (S.afterDrag = false), 800);
           showAgain();
           S.openId = null;
-          begin(anchorAt(x, y));
+          pinned(() => begin(anchorAt(x, y)));
           // 400 ms: before iOS's own long press (~500 ms), which selects text and cancels the touch. At 500 ms the two
           // raced, and the hold sometimes gave a text selection instead of a pin (iOS 27 simulator, 16 Nov).
         }, 400),
@@ -1729,8 +1732,10 @@ import { bindKeys } from './widget/keys.ts';
     showAgain();
     if (S.dKey && S.drew) return; // D held and something drawn (or cancelled): a click is part of that, not a pin
     if (S.dKey) S.drew = true; // a click with D held is a pin: letting D go then doesn't also show or hide done pins
-    begin(anchorAt(e.clientX, e.clientY));
+    pinned(() => begin(anchorAt(e.clientX, e.clientY)));
   }
+  // While a patched-in save cross-fades (live.ts) the browser hits nothing but <html> under a point: the pin is made once it is done.
+  const pinned = (go) => (W.fade ? W.fade.then(go) : go());
 
   // A pin whose 28 px would hang past the screen's right edge points the other way: its body left of its tip, so it is
   // seen whole and never makes the page scroll sideways (a phone's sheets then measure a wider page and are cut off).
