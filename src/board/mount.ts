@@ -42,7 +42,6 @@ const css = `
 #lab-board iframe,#lab-board img{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
-#lab-board.waking .c{visibility:hidden}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
 #lab-board .c b{display:block;font-size:calc(22px*var(--iz));font-weight:600;margin-bottom:calc(6px*var(--iz))}
 #lab-board .none{position:absolute;inset:0;display:grid;place-items:center;opacity:.7}
@@ -76,12 +75,17 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const signal = ac.signal;
   const on = <K extends string>(type: K, fn: (e: never) => void, o: AddEventListenerOptions | boolean = {}) => addEventListener(type, fn as EventListener, { ...(typeof o === 'boolean' ? { capture: o } : o), signal });
   root.id = 'lab-board';
-  root.classList.add('waking');
   // Not shown until the board has been read and fitted (or has failed to be): before, a reload drew the empty board at 100 %,
   // its dots and "100%" label at full size, and a moment later fitted it to 40 % with the frames in (Leo, 21 Nov: "when
   // reloading page its blinking like zoomed and elements appears weird").
   root.style.visibility = 'hidden';
-  const reveal = () => root.style.removeProperty('visibility');
+  let shown = false;
+  const reveal = () => {
+    if (shown) return;
+    shown = true;
+    root.style.removeProperty('visibility');
+    dispatchEvent(new Event('lab-board-moved')); // the widget draws the board's pins now: until here they are told as out of sight (spot, below), not left hanging over an empty board
+  };
   // The canvas: a grid of dots, one background on one element (Leo, 19 Nov: "more fancy, maybe dotted, more our
   // style"; then "more whiter pls and smaller dots less visible": near white, 1 px dots at a tenth of black, and a
   // hairline round each frame so a white page still has an edge on it). It goes with the camera (paintCam) and fades
@@ -358,10 +362,16 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       return reveal();
     }
     show(await res.json());
-    reveal();
-    // The cards of frames that load at once stay unseen for a moment (no card, then the page): a card shows only for a frame
-    // that takes longer, or is too small to load.
-    setTimeout(() => root.classList.remove('waking'), 600);
+    // Shown with its frames' pages in them, all at once: frame by frame as each loaded, one stood there blank and white for a
+    // moment beside another that already had its page (Leo, 21 Nov: "one thing not flicker second thing there flickering").
+    // A frame that takes longer than that moment shows its card, then its page.
+    const t0 = performance.now();
+    const ready = () => {
+      if (signal.aborted) return;
+      if (loading() && performance.now() - t0 < 450) return void setTimeout(ready, 16);
+      reveal();
+    };
+    ready();
   };
   // When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
   fetch('/_lab/pages').then((r) => r.json()).then((d) => {
@@ -779,7 +789,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const f = cards.find((c) => c.f.id === a.frame)?.f;
       const [wx, wy] = f && a.fx !== undefined ? [f.x + a.fx / kx(f), f.y + (a.fy || 0) / ky(f)] : [a.bx || 0, a.by || 0];
       const [sx, sy] = [ox + (wx + cam.x) * cam.z, oy + (wy + cam.y) * cam.z];
-      return { left: sx + scrollX, top: sy + scrollY, zone: null, ...(opts.clip && !inBox(sx, sy) && { clipped: true }) };
+      return { left: sx + scrollX, top: sy + scrollY, zone: null, ...(((opts.clip && !inBox(sx, sy)) || !shown) && { clipped: true }) };
     },
     camera: () => ({ ...cam }),
     /** While on, the view's resizes keep the board where it is on the screen instead of fitting it again (a phone's keyboard). */
