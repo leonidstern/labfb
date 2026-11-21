@@ -44,6 +44,9 @@ function carry(dist: number, speed: number, cap: number): [number, string] {
 let leaveBar = ''; // how the bar rises as the last leave() goes (slideAway)
 
 const OFF = 96; // how far past the screen's bottom a leaving sheet's top edge goes: the shadow above that edge (28 px) and Safari's see-through bar can't show it
+// The screen's bottom for a leaving sheet: Safari paints the page under its see-through bar below innerHeight (a sheet cut off
+// there, 21 Nov simulator), so it goes to the whole screen's.
+const floor = () => Math.max(innerHeight, screen.height || 0);
 const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin', 'box-shadow'];
 
 // Where the last touch went down: the sheet it opens grows out of there, as iOS 27's do from the button you tapped.
@@ -85,7 +88,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   try { moved = new DOMMatrixReadOnly(getComputedStyle(node).transform).m42 || 0; } catch {}
   const r = node.getBoundingClientRect();
   const top = r.top - moved;
-  const way = Math.max(r.height, innerHeight - top) + OFF - moved; // to under the screen's bottom, and past its shadow and Safari's see-through bar
+  const way = Math.max(r.height, floor() - top) + OFF - moved; // to under the screen's bottom, and past its shadow and Safari's see-through bar
   if (ms) [dur, ease] = carry(way, speed, ms);
   // The bar comes up with the sheet: after a swipe at the same pace (the sheet's way left and its speed, in whole ways
   // and ways per ms, are the bar's too), settling where the sheet is gone; after a tap softly, from rest. The standard
@@ -110,7 +113,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   void node.offsetHeight;
   const down = () => {
     node.style.setProperty('transition', `transform ${dur}ms ${ease}, box-shadow ${ms ? 0 : W.ms('quick')}ms var(--_ease-out)`, 'important');
-    node.style.setProperty('transform', `translateY(${Math.max(r.height, innerHeight - top) + OFF}px)`, 'important');
+    node.style.setProperty('transform', `translateY(${Math.max(r.height, floor() - top) + OFF}px)`, 'important');
     // The soft shadow fades off on the way, instead of lingering above the top edge and popping off with the sheet (Leo, 21 Nov:
     // "chat top shadow i dont like when disappearing"); the hairline stays.
     node.style.setProperty('box-shadow', '0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 12px 40px transparent', 'important');
