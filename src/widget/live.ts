@@ -509,7 +509,7 @@ export function startLive() {
           for (const { name } of Array.from(document.body.attributes)) if (!doc.body.hasAttribute(name)) document.body.removeAttribute(name);
           aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
           // The elements that changed are outlined for a moment (not for someone who asked for less motion).
-          if (!matchMedia('(prefers-reduced-motion: reduce)').matches) for (const e of [...touched].slice(0, 12)) if (e?.isConnected && e !== document.body) e.animate?.([{ outline: '2px solid #f80' }, { outline: '2px solid transparent' }], 1200);
+          if (!matchMedia('(prefers-reduced-motion: reduce)').matches) for (const e of [...touched].slice(0, 12)) if (e?.isConnected && e !== document.body) e.animate?.([{ outline: '2px solid Highlight' }, { outline: '2px solid transparent' }], 1200);
           touched.clear();
           if (mark?.isConnected) {
             const moved = mark.getBoundingClientRect().top - markTop;
