@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish, withAlt } from './harness.mjs';
 
 const pw = playwright();
 
@@ -48,7 +48,7 @@ try {
       check(eng, 'the link opens the board over the same page, one widget', st.path === '/canvas' && st.hash === '#board=pricing' && st.view && st.pills === 1, JSON.stringify(st));
       // a tap on frame b pins
       const b = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
-      await p.mouse.click(b.x + 60, b.y + 80);
+      await withAlt(p, () => p.mouse.click(b.x + 60, b.y + 80));
       await sleep(400);
       await p.keyboard.type('frame b note');
       await p.keyboard.press('Enter');
@@ -59,10 +59,16 @@ try {
       // resize: half, kept for this page across a reload
       await p.keyboard.press('Escape'); // the draft (if any) goes first
       await sleep(200);
+      const viewH = () => p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
+      const h0 = await viewH();
+      check(eng, 'a board opens at half the window (Leo, 21 Nov: "open boards half not full by default")', Math.abs(h0 - 400) < 4, String(h0));
       await p.click('[data-lab-board-view] .bv-size');
       await sleep(400);
-      const h1 = await p.evaluate(() => document.querySelector('[data-lab-board-view]').getBoundingClientRect().height);
-      check(eng, 'full / half makes the view half the window', Math.abs(h1 - 400) < 4, String(h1));
+      const hFull = await viewH();
+      await p.click('[data-lab-board-view] .bv-size');
+      await sleep(400);
+      const h1 = await viewH();
+      check(eng, 'full / half makes the view the whole window, then half of it', Math.abs(hFull - 800) < 4 && Math.abs(h1 - 400) < 4, String([hFull, h1]));
       // the grip on its edge: dragged up to 70%
       const g = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('.bv-grip').getBoundingClientRect(); return { x: r.x + r.width / 3, y: r.y + r.height / 2 }; });
       await p.mouse.move(g.x, g.y);

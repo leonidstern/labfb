@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish, withAlt } from './harness.mjs';
 
 const pw = playwright();
 
@@ -34,7 +34,7 @@ try {
       const note = async (x, y, words) => {
         const n = await pins();
         await sleep(200);
-        await p.mouse.click(x, y);
+        await withAlt(p, () => p.mouse.click(x, y));
         await sleep(400);
         await p.keyboard.type(words);
         await p.keyboard.press('Enter');
@@ -88,9 +88,8 @@ try {
       const d0 = await dots();
       check(eng, 'the canvas is a grid of dots: one background, sized by the zoom', Boolean(d0) && /radial-gradient/.test(d0.img) && d0.kids === 0 && Math.abs(d0.size - 32 * d0.z) < 0.5, JSON.stringify(d0));
 
-      // ----- half: the page scrolls under the view, the board's pins stay put in every frame
-      await p.click('[data-lab-board-view] .bv-size');
-      await sleep(600);
+      // ----- half (as a board opens): the page scrolls under the view, the board's pins stay put in every frame
+      check(eng, 'the board opened at half the window', Math.abs((await rect('[data-lab-board-view]')).h - 400) < 2);
       await p.evaluate(() => scrollTo(0, document.getElementById('two').getBoundingClientRect().top + scrollY - 650)); // the page pin starts under the view
       await sleep(400);
       await p.mouse.move(600, 150); // over the page, above the view
