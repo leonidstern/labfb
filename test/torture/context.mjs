@@ -497,6 +497,26 @@ const IN_PAGE = () => {
     const media = E.closest?.('svg, canvas, img');
     return { x: at[0], y: at[1], el: say(E), same: E === el, frac: [q.width ? (at[0] - q.left) / q.width : 0, q.height ? (at[1] - q.top) / q.height : 0], box: rect(el), media: media ? rect(media) : null, words: how.words ? wordRects(el, ...how.words) : null, firstLine: own[0] ? [own[0].left, own[0].top, own[0].right, own[0].bottom] : null, vw: innerWidth, vh: innerHeight, dpr: Math.round((devicePixelRatio || 1) * 100) / 100, path: location.pathname, ready: Boolean(root()?.querySelector('.scrim')) && document.readyState === 'complete' };
   };
+  /** After a save was patched in (it cross-fades, and a point is not hit properly then: <html>, or something of the old layout): what is
+   * under that point in the last moment before the widget opens its comment box for the click, which is what the widget met when it
+   * took the click (it waits for the transition). Read as probe reads, against the target's box as it is then. */
+  const settle = (x, y, t) => new Promise((done) => {
+    const t0 = Date.now();
+    let last = null;
+    const look = () => {
+      const open = Boolean(root()?.querySelector('.float textarea'));
+      const top = deepAt(x, y);
+      if (top && top !== document.documentElement && top !== host()) {
+        const E = top.closest?.('[data-comment-target]') || top;
+        const q = E.getBoundingClientRect();
+        const target = find(t);
+        last = { E, el: say(E), same: E === target, frac: [q.width ? (x - q.left) / q.width : 0, q.height ? (y - q.top) / q.height : 0], box: target ? rect(target) : null };
+      }
+      if (open || Date.now() - t0 > 2500) return done(last);
+      setTimeout(look, 4);
+    };
+    look();
+  }).then((r) => (r ? ((window.__ctxE = r.E), delete r.E, r) : r));
   /** Does a selector lead to the element the last probe found? 'same', 'none', 'error', or what it leads to. */
   const leads = (selector) => {
     let n = null;
@@ -544,7 +564,7 @@ const IN_PAGE = () => {
     box?.focus({ preventScroll: true });
     return Boolean(box) && root().activeElement === box;
   };
-  window.__ctx = { find, probe, leads, shown, selectable, hold, focusBox, clear };
+  window.__ctx = { find, probe, settle, leads, shown, selectable, hold, focusBox, clear };
 };
 
 /** Something goes wrong on the page, in the page's own time (a timer, not inside the test's call). Sent to the page as
@@ -827,20 +847,24 @@ export async function run(plan, ctx, opts) {
     if (pr.error) return void note(`   (${pr.error}: skipped)`);
     await sleep(120); // the scroll into view has ended
     // (The same point again after the scroll: what is under it now is what the click meets.)
-    const at = await ev(d, ([t, h]) => window.__ctx.probe(t, h), [op.target, how], fkey).catch(() => pr);
+    let at = await ev(d, ([t, h]) => window.__ctx.probe(t, h), [op.target, how], fkey).catch(() => pr);
     if (at.error) return void note(`   (${at.error}: skipped)`);
     if (!at.same) note(`   (under the pointer at ${at.x},${at.y}: <${at.el.tag}${at.el.dt ? ` data-t="${at.el.dt}"` : ''}>, not the target itself, whose box is ${at.box.map(Math.round)}; window ${at.vw}×${at.vh})`);
     // The browser says nothing but the page itself is under a point inside the element's box. Right after a save was
     // patched in (the widget cross-fades it, and a page is not hit while it fades) that is what a person's click meets
     // too: the click is made and what the pin lands on is told. Any other time the test has no point to click.
     const nowhere = !at.same && (at.el.tag === 'html' || at.el.body);
-    const fading = nowhere && d.patchedAt && Date.now() - d.patchedAt < 1500;
+    const recent = !at.same && d.patchedAt && Date.now() - d.patchedAt < 1500;
+    const fading = nowhere && recent;
     if (nowhere && !fading) return void note('   (the browser finds nothing of the element under any of its points: skipped)');
     // Where the frame's own window starts in the tab's (the test's frames have no border).
     const off = fkey ? await (await frameOf(d, fkey).frameElement()).boundingBox().catch(() => null) : { x: 0, y: 0 };
     if (!off) return void note('   (the frame has no place in the tab: skipped)');
     const X = (x) => off.x + x;
     const Y = (y) => off.y + y;
+    // (While the save cross-fades the hit is <html>, which is not what the widget pins: it waits for the transition, and the element
+    // it meets is the one under that point then. That is read from the moment the fade ends, started before the click.)
+    const settled = recent ? ev(d, ([x, y, t]) => window.__ctx.settle(x, y, t), [at.x, at.y, op.target], fkey).catch(() => null) : null;
     const [bl, bt, br, bb] = at.box;
     const inWin = (v, max) => Math.min(Math.max(v, 3), max - 3);
     let via = op.via;
@@ -895,6 +919,8 @@ export async function run(plan, ctx, opts) {
     }
     // (A press that met an earlier pin or drawing opened its thread: the words went there as a reply. No new pin.)
     if (c.parent) return void (note('   (the press opened an earlier pin\'s thread, the words are a reply there: no new pin)'), await p.keyboard.press('Escape').catch(() => {}));
+    const after = await settled;
+    if (after?.el && after.el.tag !== 'html') at = { ...at, ...after };
     if (fading && (c.anchor?.selector === 'body' || !c.anchor?.selector)) {
       silent('pin-during-a-patch-fade-lands-on-the-page-itself', `step ${i}: ${Date.now() - d.patchedAt} ms after a save was patched into ${d.key}, a click inside <${tg.node?.tag || tg.tag} data-t="${op.target}"> (its box ${at.box.map(Math.round)}, the click at ${at.x},${at.y}) made a pin on ${JSON.stringify(c.anchor?.element)} ${c.anchor?.selector === 'body' ? '(the page itself, no element)' : ''}: while the widget cross-fades the patch the browser hits nothing but <html> (${plan.browser})`, {});
       return void (await sleep(350), await p.keyboard.press('Escape').catch(() => {}));
