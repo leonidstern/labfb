@@ -20,7 +20,7 @@ let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the 
 // the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
 // --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-:host{all:initial!important;opacity:var(--bv-o,1)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+:host{all:initial!important;opacity:var(--bv-o,1)!important;translate:var(--bv-y,none)!important;transition:translate var(--bv-t,0ms) cubic-bezier(.2,.8,.2,1)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
 .bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
 .bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
@@ -111,28 +111,46 @@ export function show(name: string, o: Opts) {
     toggle.textContent = size >= 1 ? 'half' : 'full';
   };
   paintSize();
-  // The grip on the top edge: drag it down and the page shows above. The edge follows the pointer, one step a frame;
-  // near the top it becomes full only when let go (snapping mid-drag made it jump back and forth at that height).
-  grip.addEventListener('pointerdown', (e) => {
+  // The grip on the top edge, or the bar itself off its keys: drag it down and the page shows above. The edge follows the
+  // pointer, one step a frame; near the top it becomes full only when let go (snapping mid-drag made it jump back and
+  // forth at that height). Pulled on below the least height, it goes down with the finger, and let go there (or flicked
+  // down) it slides away and closes, as the comment drawer does (Leo, 21 Nov: "board drawer also behave weird not like
+  // comment drawer").
+  const drag = (e: PointerEvent) => {
+    if ((e.target as Element).closest?.('button') || e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    grip.setPointerCapture?.(e.pointerId);
+    const on = e.currentTarget as HTMLElement;
+    on.setPointerCapture?.(e.pointerId);
     let frame = 0;
+    let below = 0; // px pulled past the least height
+    let last = { y: e.clientY, t: e.timeStamp, v: 0 };
     const move = (m: PointerEvent) => {
-      size = Math.max(MIN, Math.min(1, (innerHeight - m.clientY) / innerHeight));
-      frame ||= requestAnimationFrame(() => ((frame = 0), paintSize()));
+      const want = (innerHeight - m.clientY) / innerHeight;
+      size = Math.max(MIN, Math.min(1, want));
+      below = Math.max(0, (MIN - want) * innerHeight);
+      const dt = m.timeStamp - last.t;
+      if (dt > 0) last = { y: m.clientY, t: m.timeStamp, v: 0.6 * ((m.clientY - last.y) / dt) + 0.4 * last.v };
+      frame ||= requestAnimationFrame(() => ((frame = 0), paintSize(), view.style.setProperty('--bv-y', `0 ${below}px`)));
     };
-    const up = () => {
-      grip.removeEventListener('pointermove', move);
+    const up = (u: PointerEvent) => {
+      on.removeEventListener('pointermove', move);
+      on.removeEventListener('pointerup', up);
+      on.removeEventListener('pointercancel', up);
       cancelAnimationFrame(frame);
+      paintSize();
+      if (u.type === 'pointerup' && (below > 48 || (last.v > 0.6 && size <= MIN + 0.05))) return void close(last.v);
+      if (below) setTimeout(() => ((at = view.getBoundingClientRect()), moved()), slide(view, true, 0, 200) + 20);
       if (size > 0.97) size = 1;
       paintSize();
       saveSize(o.page, size);
     };
-    grip.addEventListener('pointermove', move);
-    grip.addEventListener('pointerup', up, { once: true });
-    grip.addEventListener('pointercancel', up, { once: true });
-  });
+    on.addEventListener('pointermove', move);
+    on.addEventListener('pointerup', up);
+    on.addEventListener('pointercancel', up);
+  };
+  grip.addEventListener('pointerdown', drag);
+  if (!o.own) bar.addEventListener('pointerdown', drag);
   // The view's bar never scrolls the page behind (the board itself pans on the wheel).
   bar.addEventListener('wheel', (e) => e.preventDefault(), { passive: false });
   // A page's zoom on <html> or <body> scales what is drawn in the view: it zooms the other way, by what 100 px comes out as
@@ -159,6 +177,9 @@ export function show(name: string, o: Opts) {
   addEventListener('scroll', scrolled, { passive: true });
   // Reduced motion: it fades in (started once the board is mounted: that blocks the page for a while) (Apple: a crossfade, not a pop of the whole window). Its opacity is !important in :host (all: initial),
   // which an animation or a transition can't beat, so --bv-o is stepped here, one frame at a time.
+  // It comes up from the bottom, as the comment drawer does (not the board's own address: that is the whole page).
+  // Where it is (at) and its pins are read again once it rests: a move is no resize, so the watch below misses it.
+  if (!o.own && !matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(() => cur?.view === view && ((at = view.getBoundingClientRect()), moved()), slide(view, true) + 20);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue('--lab-t-calm')); // lab.css is served minified: .12s
     const d = v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : 120;
@@ -191,7 +212,32 @@ function teardown() {
 }
 
 /** Close the view: back, when it was opened here (the entry it added goes), else the address loses its #board. */
-function close() {
+// The view's slide: up into place (in), or down off the screen, at a finger's speed (px/ms) when it was flicked.
+// No move left on it once it rests (a moved box holds what is fixed inside it, the board's own layers).
+function slide(view: HTMLElement, into: boolean, speed = 0, ms = into ? 280 : 0) {
+  const way = view.getBoundingClientRect().height + 8;
+  if (!into) ms = Math.round(Math.min(280, Math.max(120, speed > 0.3 ? way / speed : 240)));
+  if (into && !view.style.getPropertyValue('--bv-y')) {
+    view.style.setProperty('--bv-y', `0 ${way}px`);
+    void view.offsetHeight;
+  }
+  view.style.setProperty('--bv-t', `${ms}ms`);
+  view.style.setProperty('--bv-y', `0 ${into ? 0 : way}px`);
+  if (into) setTimeout(() => (view.style.removeProperty('--bv-t'), view.style.removeProperty('--bv-y')), ms);
+  return ms;
+}
+let closing = false;
+/** Close the view: it slides down, then back, when it was opened here (the entry it added goes), else the address loses
+ * its #board. The browser's own back takes it down at once (its own gesture is the motion). */
+function close(speed = 0) {
+  if (!cur || closing) return;
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches && !lastOpts?.own) {
+    closing = true;
+    return void setTimeout(() => ((closing = false), now()), slide(cur.view, false, speed));
+  }
+  now();
+}
+function now() {
   if (!cur) return;
   if (cur.pushed && nameInHash() === cur.name) return history.back(); // popstate (below) takes it down
   try {
