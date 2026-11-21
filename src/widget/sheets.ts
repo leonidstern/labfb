@@ -70,12 +70,11 @@ export function holdKeyboard() {
 // used to slide behind the keyboard and vanish there, and the keyboard stayed alone for 0.6 s; after sending, the sheet
 // rode the keyboard halfway down and vanished mid-screen (iOS 27 simulator, 16 Nov). Its box is held where it is (the
 // keyboard going would otherwise resize and move it on the way).
-// Closed by a tap (or a send) it shrinks back into where it came from and fades, as iOS 27's share sheet does into its
-// button (measured: ~0.1 s); to: the new pin, after a send. After a swipe (ms) it slides down at the finger's speed,
-// steady, never fading (easing out, its last part crept under Safari's see-through bottom bar, Leo 16 Nov).
-// After a send it slides down whole, like any sheet: it never shrinks or fades, and the new pin pops in with one green
-// ring as it goes (.pin.arrive). Lab option 5, Leo 17 Nov; before that it flew into the pin, shrinking to its size, and
-// the squeezed card read badly.
+// Closed by a tap, a swipe or a send it slides down and away and never shrinks (a tap used to shrink it to 30 % over its
+// pill and fade, like iOS 27's share sheet; its shadow smeared there and the pill came up under it, Leo 21 Nov). After a
+// swipe (ms: the longest it may take) it goes at the finger's speed, steady, never fading (easing out, its last part crept
+// under Safari's see-through bottom bar, Leo 16 Nov); a tap takes the base duration. After a send the new pin pops in with
+// one green ring as it goes (.pin.arrive). Lab option 5, Leo 17 Nov.
 // Returns how long it takes; let go of it with letGo().
 // After a swipe (ms: the longest it may take) it goes on at `speed` px/ms, the finger's (see carry).
 export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
@@ -114,12 +113,7 @@ export function leave(node: HTMLElement, ms = 0, sent = false, speed = 0) {
   };
   // After a send, from the next frame: drawing the sent pin took ~100 ms, which ate the start of the move (iOS 27 simulator).
   if (sent) requestAnimationFrame(() => requestAnimationFrame(down));
-  else if (ms) down();
-  else {
-    node.style.setProperty('transition', `transform ${dur}ms ${ease}, opacity ${dur}ms var(--_ease-in)`, 'important');
-    node.style.setProperty('transform', `translateY(${moved}px) scale(.3)`, 'important');
-    node.style.setProperty('opacity', '0', 'important');
-  }
+  else down(); // a tap too goes down and away, as a swipe does: it used to shrink to 30 % over the pill, its shadow smeared there (Leo, 21 Nov: "still some shadow when drawer hiding")
   W.scrim.style.transition = `opacity ${dur}ms ${ease}`;
   W.scrim.style.opacity = '0';
   return sent ? dur + W.ms('quick') / 3 : dur; // after a send it starts a frame or two late (see down)
