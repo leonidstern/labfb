@@ -11,7 +11,8 @@ let S: any; // the widget's state (W.S), read once at startup
 // A board in this page (src/board/overlay.ts, loaded when one is opened): its link, the address's #board=<name> (a
 // reload, a forward) or a board pin picked in the list opens it. Closing it lets go of a board pin that was open.
 export const showBoard = (name: string, of = '', push = true) =>
-  W.part('boardview').then((m) => m.show(name, { page: S.page, of, push, onClose: () => {
+  W.part('boardview').then((m) => (W.host.setAttribute('data-board', ''), m.show(name, { page: S.page, of, push, onClose: () => {
+    W.host.removeAttribute('data-board');
     // A pin's board closed: its +board pin goes to the agent now (the lab held it, local.mjs filling).
     if (/^pin-/.test(name)) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
     sections(name);
@@ -19,7 +20,7 @@ export const showBoard = (name: string, of = '', push = true) =>
     if (open?.anchor?.kind === 'board') S.openId = null;
     if (S.draft?.anchor?.kind === 'board') S.draft = null;
     W.render();
-  } }), () => W.say("the board couldn't load"));
+  } })), () => W.say("the board couldn't load"));
 /** A pin's own board, pin-<id>, about the page at #pin-<id>: made first when asked (+board), then opened. Made, it is
  * also put in the page as a section after the element pinned (place, local.mjs): the lab writes <lab-board name> into the
  * page's file, and the board shows there, below, to come back to. */
