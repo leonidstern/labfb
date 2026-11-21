@@ -11,7 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, onLan, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
-import { AGENTS, agentKind } from './lib/agents.ts';
+import { AGENTS } from './lib/agents.ts';
 import { watchTree } from './lib/watch.ts';
 import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './lib/labs.ts';
 import { alive, setWifi } from './lib/labcall.ts';
@@ -1498,7 +1498,8 @@ const remember = (w) => {
 // Who hears this page right now: a wait that named it, else one that named none. Null means a comment here waits
 // until someone listens -- worth saying out loud on a page that has something waiting.
 const listenerOf = (key) => (waiters.find((w) => w.pages && covers(w.pages, key)) || waiters.find((w) => !w.pages))?.label || null;
-// Threads still waiting on someone: nobody answered, or the newest word in them is a person's. An answered thread
+// Threads still waiting on someone: nobody answered, or the newest word in them is a person's (the agent's carry a
+// session, set by the lab alone: a name says nothing, "Campbell" has Campbell in it and "aider" is no listed agent). An answered thread
 // left unresolved is bookkeeping, not work; counting those made a day-old page read as a backlog of 52 when one
 // comment was waiting, and nothing that cries wolf like that gets read twice.
 const waitingOn = (key) => {
@@ -1508,7 +1509,7 @@ const waitingOn = (key) => {
   return all.filter((c) => {
     if (c.parent || c.resolved) return false;
     const reps = replies.get(c.id) || [];
-    return !reps.length || !agentKind(reps[reps.length - 1].name);
+    return !reps.length || !reps[reps.length - 1].session;
   }).length;
 };
 // With every page closed, Claude keeps waiting quietly (a comment after a break still wakes it), and the wait
@@ -1775,7 +1776,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
         if (got.rules) rulesSent.delete(who); // the rules went with it, so they go again
         for (const [page, id, was] of handedBefore) if (!theirs.has(id)) setComment(page, id, { handedAt: was });
         for (const [page, id, k] of got.told) setComment(page, id, { [k]: undefined }); // not seen: said again
-        saveHanded();
+        writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
         for (const page of new Set(handedBefore.map(([page]) => page))) persist(page).catch(() => {});
         if (got.full) toldAt.delete(who);
         if (got.suggest) suggestTold.delete(who);
@@ -1794,7 +1795,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     setComment(page, id, { handedAt: at });
   }
   for (const id of ids) wrote[id] = handoff[id] ? [...handoff[id]] : undefined;
-  saveHanded();
+  writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
   for (const page of new Set(got.handed.map(([page]) => page))) persist(page).catch(() => {});
   setMode(waiters.length ? 'listening' : 'working'); // another session still waits: the lab is still listening
   if (got.handed.length) setTimeout(() => notAnswered(), ANSWER_MS).unref();
@@ -1821,7 +1822,7 @@ function deliver(res, got, who = '', ack = false, key = '', label = 'Claude') {
     }
     const now = new Date().toISOString();
     for (const [page, id, was] of handedBefore) if (threads.has(id)) setComment(page, id, { handedAt: was, unanswered: now });
-    saveHanded();
+    writeState(); // now, not in 300 ms: a restart or a kill in between would hand the same pins out again
     for (const page of new Set(quiet.map(([page]) => page))) persist(page).catch(() => {});
     silent.set(who, { label, pages: key && key !== '*' ? key.split(',') : null, at: Date.now() });
     console.log(`[lab] ${label} did not answer ${quiet.length} pin${quiet.length === 1 ? '' : 's'} in ${Math.round(ANSWER_MS / 1000)} s: they go to the next wait`);
@@ -2700,7 +2701,10 @@ const handler = async (req, res) => {
       const listRev = pageRev.get(listPage) || 0;
       const kind = `${isLoopback(req) ? 'here' : 'guest'} ${encodingFor(req)} ${req.headers['x-lab-admin'] || ''}`;
       const kept = listing && cachedList(listPage, kind);
-      if (kept) return res.writeHead(kept.status, kept.headers).end(kept.out);
+      // The list says which comments version it is as of (x-lab-rev), so a page that opened it can ask what came after
+      // (/changes) when the live stream's first message says the lab is further on. A kept list is as of now: its page hasn't changed.
+      if (kept) return res.writeHead(kept.status, { ...kept.headers, 'x-lab-rev': String(version.comments) }).end(kept.out);
+      const listAt = String(version.comments); // before the list is read: a change made while it is built is replayed, not missed
       const fn = api[req.method] || (() => new Response('', { status: 405 }));
       // The agent's key stands for the owner's in the API (it resolves and deletes as the browser here does), and the
       // API hears from the lab alone who speaks, the agent or a person: a page can't say it is the agent.
@@ -2732,7 +2736,7 @@ const handler = async (req, res) => {
         broadcast();
         wake();
       }
-      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store' };
+      const head = { 'content-type': out.headers.get('content-type') || 'application/json', 'cache-control': 'no-store', ...(listing ? { 'x-lab-rev': listAt } : {}) };
       let body = text;
       // Another device sees comments without the agent's session details.
       if (req.method === 'GET' && out.ok && !isLoopback(req) && /json/.test(out.headers.get('content-type') || '')) {
@@ -2893,6 +2897,7 @@ if (IDLE_MS > 0)
     }
   }, Math.min(60000, Math.max(1000, IDLE_MS / 4))).unref();
 const bye = () => {
+  if (stateTimer) writeState(); // what the 300 ms timer still holds
   try {
     if (JSON.parse(fs.readFileSync(SERVER, 'utf8')).pid === process.pid) fs.rmSync(SERVER);
   } catch {}
