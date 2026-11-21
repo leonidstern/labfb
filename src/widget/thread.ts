@@ -293,6 +293,7 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       box.append(q);
     }
     box.append(...W.readable(item.text));
+    if (item.images) W.part('attach').then((m) => m.show(box.appendChild(W.el('div')), item)); // thumbnails, in the attach part (it builds the names from the id, never reads a path)
     if (item.session && Array.isArray(item.choices) && item.choices.length) {
       box.classList.add('asks');
       box.append(choicesEl(c, item, card));
@@ -479,8 +480,9 @@ export function threadCard(c, fresh = new Set(), focus = false) {
       placeholder: 'reply',
       autofocus: focus && !asking, // an open question: no focus in the box, so 1 to 6 pick its choices
       draftKey: `lab-typing:${W.S.page}:${c.id}`,
-      onSubmit: async (name, text) => {
-        const { comment } = await W.send({ name, text, parent: c.id });
+      attach: true,
+      onSubmit: async (name, text, att) => {
+        const { comment } = await W.send({ name, text, parent: c.id, ...att });
         W.addComment(comment);
         W.markSeen([comment]);
         // Writing in a done thread reopens it (the lab does the same): it shows as open at once, pin and buttons.

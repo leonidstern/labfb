@@ -292,6 +292,8 @@ button.btn.undo { color: var(--_fg); }
 /* The send sign: a paper plane, one filled shape cut with clip-path (crisp at any size, no joins); it flies off on send. */
 .send .arr { display: block; position: relative; left: -1px; width: 12px; height: 11px; background: currentColor; clip-path: polygon(0 42%, 100% 0, 66% 100%, 46% 60%); }
 .send * { color: inherit; }
+.attbtn { font: inherit; font-size: 12px; letter-spacing: 0; color: var(--_muted); background: none; border: 0; padding: 6px 8px 0; cursor: pointer; }
+.attbtn:hover { color: var(--_fg); }
 .error { color: var(--_red); font-size: 12px; padding: 6px 8px 0; letter-spacing: 0; }
 .error:empty { display: none; }
 .error.wait { color: var(--_muted); }

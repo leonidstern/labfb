@@ -361,7 +361,7 @@ import { bindKeys } from './widget/keys.ts';
   bindFramework(W);
   // The message box and a message's small pieces (src/widget/composer.ts, messages.ts). Arrows, so helpers defined
   // further down are read when called.
-  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning() });
+  bindComposer({ el, store, root, ms, ease, refreshPinCursor: () => refreshPinCursor(), syncReads: () => syncReads(), rememberMe, whileWriting: () => setPinning(), part });
   bindMessages({ el, mine: (c) => mine(c), repliesOf: (id) => repliesOf(id), lineUp, ord, render: () => render(), S, root });
 
   // Puts `next` into `box` in order, touching only what changed: nodes already in place stay (a node taken out and put
@@ -1204,8 +1204,9 @@ import { bindKeys } from './widget/keys.ts';
         autofocus: !S.pinnedByHold,
         draftKey: `lab-typing:${S.page}:new`,
         empty: anchor.ink ? inkSaid(anchor.ink.mark) : '',
-        onSubmit: async (name, said) => {
-          const { comment, edit } = await send({ name, text: said, anchor });
+        attach: true,
+        onSubmit: async (name, said, att) => {
+          const { comment, edit } = await send({ name, text: said, anchor, ...att });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
           addComment(comment);
           markSeen([comment]);
