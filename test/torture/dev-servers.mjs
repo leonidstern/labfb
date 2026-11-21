@@ -703,6 +703,19 @@ export async function run(plan, ctx, opts) {
     return r;
   };
 
+  // Is `lab` the dev server's Content-Type with only `charset=utf-8` put on (or its spelling tidied: `text/html;charset=UTF-8` -> `text/html; charset=utf-8`)?
+  // The media type must be text/html and the same; the dev server's charset, if it sent one, must already be utf-8; any other parameter is kept as it was.
+  const htmlCharsetOnly = (dev, lab) => {
+    const parse = (v) => String(v ?? '').split(';').map((x) => x.trim()).filter(Boolean);
+    const [dt, ...dp] = parse(dev);
+    const [lt, ...lp] = parse(lab);
+    if (!dt || !lt || dt.toLowerCase() !== lt.toLowerCase() || dt.toLowerCase() !== 'text/html') return false;
+    const charset = (ps) => ps.filter((x) => /^charset\s*=/i.test(x)).map((x) => x.replace(/^charset\s*=\s*/i, '').replace(/^"|"$/g, '').toLowerCase());
+    const [dc, lc] = [charset(dp), charset(lp)];
+    if (dc.length > 1 || lc.length !== 1 || lc[0] !== 'utf-8' || (dc.length && !/^utf-?8$/.test(dc[0]))) return false;
+    const rest = (ps) => ps.filter((x) => !/^charset\s*=/i.test(x)).join(';');
+    return rest(dp) === rest(lp);
+  };
   // The same request asked of the dev server directly (twice, around the one through the lab) and through the lab.
   const HOP = ['connection', 'keep-alive', 'date', 'transfer-encoding'];
   const compare = async (spec, from = 'local', cookie = '') => {
@@ -732,7 +745,15 @@ export async function run(plan, ctx, opts) {
         return bad('page-body', `the page without the lab's two tags differs from the dev server's at ${at}: ${JSON.stringify(a.slice(Math.max(0, at - 30), at + 50))} for ${JSON.stringify(b.slice(Math.max(0, at - 30), at + 50))}`);
       }
       // (cache-control, content-length, content-encoding and the Content-Security-Policy are the lab's to change on a page: lib/proxy.ts.)
-      for (const h of ['content-type', 'location']) if (stable((x) => x.headers[h]) && l.headers[h] !== d1.headers[h]) return bad(h, `${h}: ${l.headers[h]} through the lab, ${d1.headers[h]} directly`);
+      for (const h of ['content-type', 'location']) if (stable((x) => x.headers[h]) && l.headers[h] !== d1.headers[h]) {
+        // lib/proxy.ts: a page load's HTML is read in the dev server's charset and goes on as UTF-8, so the lab writes `; charset=utf-8`
+        // (same media type, same other parameters, the spacing of the parameters its own). Only that is accepted; anything else is a finding.
+        if (h === 'content-type' && htmlCharsetOnly(d1.headers[h], l.headers[h])) {
+          note(`   ${spec.path}: content-type ${d1.headers[h]} directly, ${l.headers[h]} through the lab (the lab's charset=utf-8 on a page, as lib/proxy.ts does)`);
+          continue;
+        }
+        return bad(h, `${h}: ${l.headers[h]} through the lab, ${d1.headers[h]} directly`);
+      }
       return;
     }
     // HTML a script asked for (fetch, not a page load): did it come back with the lab's tags in it? A whole page
