@@ -1328,8 +1328,44 @@ const unchanged = (file) => {
   if (saw.size > 2000) saw.delete(saw.keys().next().value);
   return was === h;
 };
+// A write through a symlink is reported by the watcher under the target's path only (macOS), never under the link's, so a page
+// served through a link would never learn it changed. One walk finds the links (real path -> served paths); it is made again when
+// a link appears. A target outside the served folder is not under the watcher: its own folder is watched for it.
+let links = null;
+const outside = new Map(); // folder outside ROOT -> its watcher
+const linksOf = () => {
+  if (links) return links;
+  links = new Map();
+  for (const w of outside.values()) w.close();
+  outside.clear();
+  const walk = (dir, depth) => {
+    let list = [];
+    try {
+      list = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {} // gone while looking
+    for (const d of list) {
+      const full = path.join(dir, d.name);
+      if (hidden(path.relative(ROOT, full))) continue;
+      if (d.isSymbolicLink()) {
+        try {
+          const real = fs.realpathSync(full);
+          links.set(real, [...(links.get(real) || []), path.relative(ROOT, full)]);
+          const home = path.dirname(real);
+          if (path.relative(ROOT, home).startsWith('..') && !outside.has(home)) outside.set(home, fs.watch(home, (e, name) => name && linked(path.join(home, String(name))).forEach(fileSaved)));
+        } catch {} // a link to nothing, or a folder that can't be watched
+      } else if (d.isDirectory() && depth < 6) walk(full, depth + 1);
+    }
+  };
+  walk(ROOT, 0);
+  return links;
+};
+// The served paths (relative to ROOT) of the links to a file, or to a folder above it.
+const linked = (abs) => {
+  const parts = abs.split(path.sep);
+  return parts.flatMap((_, i) => (linksOf().get(parts.slice(0, i + 1).join(path.sep) || path.sep) || []).map((l) => path.join(l, ...parts.slice(i + 1))));
+};
 let burstAt = 0; // when the burst now waiting began: writes that never pause (a log, a database) are sent after 1 s anyway
-if (!PROXY) watchTree(ROOT, (event, file) => {
+const fileSaved = (file) => {
   if (!file || hidden(file) || EDITOR_TEMP.test(path.basename(file)) || unchanged(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
   // event's name can't tell; a CSS or JS save leaves the index alone.)
@@ -1363,6 +1399,13 @@ if (!PROXY) watchTree(ROOT, (event, file) => {
     // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
     // once. A person saving by hand gets it after 80 ms.
   }, mode === 'working' ? 400 : 80);
+};
+if (!PROXY) linksOf();
+if (!PROXY) watchTree(ROOT, (event, file) => {
+  try {
+    if (fs.lstatSync(path.join(ROOT, file)).isSymbolicLink()) links = null; // a new link: found again at the next look
+  } catch {}
+  for (const f of [file, ...linked(path.join(ROOT, file))]) fileSaved(f);
 }, hidden, (n) => console.log(`[lab] ${n} folder${n === 1 ? '' : 's'} could not be watched (the computer is out of file watchers), so saves there will not reload pages. On Linux, raise fs.inotify.max_user_watches.`));
 
 // The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.

@@ -4,7 +4,7 @@ import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { site, rm, spawnLab, sleep, up as answers, serverJson } from './harness.mjs';
+import { site, tmp, rm, spawnLab, sleep, up as answers, serverJson } from './harness.mjs';
 
 const { DIR, PORT, B } = site('hot', 4900, 90);
 fs.writeFileSync(path.join(DIR, 'index.html'), '<!doctype html><title>t</title><link rel="stylesheet" href="s.css"><h1 id="t">Hello</h1>');
@@ -84,6 +84,33 @@ test('an HTML save and a picture save are hot too', async () => {
   live.stop();
   assert.deepEqual(img?.hotFiles, [{ path: '/pic.svg', kind: 'img' }]);
   assert.equal(img.files, first.files, 'still no reload');
+});
+
+// macOS reports a write through a symlink under the target's path only: the served path of the link must be told too.
+test('a page, a stylesheet and a picture served through symlinks update when the target is written', async () => {
+  const outer = tmp('hot-out'); // a target outside the served folder is outside the watcher too
+  fs.mkdirSync(path.join(DIR, '_alt'));
+  save('_alt/page.html', '<!doctype html><title>l</title><h1>one</h1>');
+  save('_alt/theme.css', 'h1{color:red}');
+  fs.writeFileSync(path.join(outer, 'far.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>');
+  fs.symlinkSync('_alt/page.html', path.join(DIR, 'linked.html'));
+  fs.symlinkSync('_alt/theme.css', path.join(DIR, 'linked.css'));
+  fs.symlinkSync(path.join(outer, 'far.svg'), path.join(DIR, 'far.svg'));
+  await sleep(400); // the links' own events settle
+  for (const [link, target, text, kind] of [
+    ['/linked.html', '_alt/page.html', '<!doctype html><title>l</title><h1>two</h1>', 'html'],
+    ['/linked.css', '_alt/theme.css', 'h1{color:blue}', 'css'],
+    ['/far.svg', null, '<svg xmlns="http://www.w3.org/2000/svg" width="9" height="9"/>', 'img'],
+  ]) {
+    const live = await listen();
+    const first = await live.next(() => true);
+    if (target) save(target, text);
+    else fs.writeFileSync(path.join(outer, 'far.svg'), text);
+    const hot = await live.next((s) => s.hot > (first.hot || 0));
+    live.stop();
+    assert.ok(hot?.hotFiles.some((f) => f.path === link && f.kind === kind), `${link} was told: ${JSON.stringify(hot?.hotFiles)}`);
+  }
+  rm([outer]);
 });
 
 test('more hot files in one go than the list holds is a reload, not a list that leaves some out', async () => {
