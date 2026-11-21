@@ -168,8 +168,13 @@ export function show(name: string, o: Opts) {
     }
     // A half view grows to the whole screen while the keyboard is up (its top part would be panned off, and it would slide),
     // and settles back to its size when the keyboard goes (Leo, 21 Nov: "canvas still jumping", the half board).
-    if (typing && size < 1 && !grown) (grown = true), view.style.setProperty('--bv-h', '100%');
-    else if (!typing && grown && !vv.offsetTop) (grown = false), paintSize();
+    if (typing && size < 1 && !grown) {
+      grown = true;
+      view.style.setProperty('--bv-h', '100%');
+    } else if (!typing && grown && !vv.offsetTop) {
+      grown = false;
+      paintSize();
+    }
     const viewTop = innerHeight - view.offsetHeight; // where the view starts when nothing is panned
     const next = typing && viewTop < vv.height - 160 ? Math.round(vv.offsetTop) : !typing ? Math.round(vv.offsetTop) : 0;
     if (next !== pan) {
