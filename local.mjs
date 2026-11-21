@@ -847,16 +847,25 @@ const boardText = async (page, text) => {
   const b = page.startsWith('/_board/') && boardGet(name);
   if (b) text = text.replace(/^page: .*$/m, `page: ${origin}/_lab/board/${name}${frame ? `/${frame}` : ''}`);
   const of = (board) => (board.of ? fileFor(boardPage(board.of.split('#')[0])) : null);
+  // A frame's open pins: those made inside its own page copy, and those on the frame itself (a picture, a live page), which are
+  // the board's (its own address, or the page it is over).
+  const openOn = (bd, g) => [...(g.src.startsWith('/_lab/') ? commentsOf(`/_board/${bd.name}/${g.id}`) : []), ...[`/_board/${bd.name}`, boardHome(bd)].filter(Boolean).flatMap((k) => commentsOf(k).filter((c) => c.anchor?.board === bd.name && c.anchor.frame === g.id))].filter((c) => !c.parent && !c.resolved).length;
+  const listOf = (bd) => act.text(bd, { origin, file: of(bd), home: boardHome(bd) != null, pins: (g) => openOn(bd, g) });
   const f = b && frame && b.frames.find((g) => g.id === frame);
   if (f) text = text.replace(/^(page: .*)$/m, `$1\n${act.frameLine(b, f, of(b))}`);
-  else if (b && !frame) text = `${act.text(b, { origin, file: of(b), home: boardHome(b) != null, pins: (g) => (g.src.startsWith('/_lab/') ? commentsOf(`/_board/${name}/${g.id}`).filter((c) => !c.parent && !c.resolved).length : 0) })}\n${text}`;
+  else if (b && !frame) text = `${listOf(b)}\n${text}`;
+  else if (!page.startsWith('/_board/')) {
+    // Pins on a page that name a board (made on it, over this page): its frames follow, as they lead the board's own text.
+    const named = [...new Set([...text.matchAll(/^on: the board (\S+) over this page/gm)].map((m) => m[1]))].map(boardGet).filter(Boolean);
+    if (named.length) text = `${text.trimEnd()}\n\n${named.map((bd) => `# The frames of board ${bd.name}, which the pins above name\n${listOf(bd)}`).join('\n')}`;
+  }
   let cur = page.startsWith('/_board/') ? name : ''; // a pin on a page's board says which board in the line before
   return text.split('\n').map((l) => l.replace(/^on: the board (\S+) over this page/, (all, n) => ((cur = n), all)).replace(/^(near: frame |seen on: board ([^,\n]+), frame )([a-z][a-z0-9]*)(.*)$/, (all, lead, named, id, tail) => {
     const bd = (named || cur) && boardGet(named || cur);
     const g = bd?.frames.find((x) => x.id === id);
     if (!g) return all;
     const more = lead === 'near: frame ' && g.state === 'picked' ? `\n${act.frameLine(bd, g, of(bd)).split('\n')[1]}` : '';
-    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${act.shown(bd, g)} at ${act.sized(g)})${tail}${more}`;
+    return `${lead}${id}${g.label ? ` "${g.label}"` : ''} (${act.shown(bd, g)} at ${act.sized(g)}${g.state === 'archived' ? ', archived' : ''})${tail}${more}`;
   })).join('\n');
 };
 
