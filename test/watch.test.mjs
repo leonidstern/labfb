@@ -93,3 +93,35 @@ test('nothing is heard after close', async () => {
 test('a folder that is not there throws, as fs.watch does', () => {
   assert.throws(() => watchTree(path.join(os.tmpdir(), 'labit-no-such-folder-' + process.pid), () => {}));
 });
+
+// A computer out of watchers (inotify's limit) refuses a folder with ENOSPC; fs.watch is made to do that for two of three.
+test('folders the computer has no watcher left for are counted and told once, the rest still heard', { skip: process.platform !== 'linux' }, async () => {
+  const root = mk();
+  for (const d of ['a', 'b', 'c']) fs.mkdirSync(path.join(root, d));
+  const real = fs.watch;
+  fs.watch = (dir, ...rest) => {
+    if (/[\\/][ab]$/.test(String(dir))) throw Object.assign(new Error('ENOSPC: System limit for number of file watchers reached'), { code: 'ENOSPC' });
+    return real(dir, ...rest);
+  };
+  const told = [];
+  let w;
+  try {
+    const heard = [];
+    w = watchTree(root, (event, file) => heard.push(file), () => false, (n) => told.push(n));
+    fs.writeFileSync(path.join(root, 'c', 'x.txt'), '1');
+    for (let t = 0; t < 2000 && !heard.includes(path.join('c', 'x.txt')); t += 20) await sleep(20);
+    assert.ok(heard.includes(path.join('c', 'x.txt')), 'the folder that could be watched is');
+  } finally {
+    fs.watch = real;
+    w?.close();
+  }
+  assert.deepEqual(told, [2]);
+});
+
+test('nothing is told when every folder could be watched', () => {
+  const root = mk();
+  fs.mkdirSync(path.join(root, 'a'));
+  const told = [];
+  watchTree(root, () => {}, () => false, (n) => told.push(n)).close();
+  assert.deepEqual(told, []);
+});
