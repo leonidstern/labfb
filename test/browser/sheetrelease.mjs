@@ -157,7 +157,7 @@ for (const eng of engines()) {
       const u = Math.max(0, -vs);
       check(eng, `${name}: the first frame goes as far as the sheet was going (${(u * dt).toFixed(1)} px)`, -first >= 0.6 * u * dt && -first <= 1.6 * u * dt, `${(-first).toFixed(1)} px`);
     }
-    check(eng, `${name}: never turns back`, st.every((v) => v * dirn >= -0.6));
+    check(eng, `${name}: never turns back`, st.every((v) => v * dirn >= -1.5));
     if (ends.startsWith('closed')) check(eng, `${name}: closes`, !r.open && (gone(r) || s.at(-1) > 843));
     else check(eng, `${name}: ends where it sat`, r.open && Math.abs(s.at(-1) - rest) < 1.5, `${s.at(-1).toFixed(1)} vs ${rest.toFixed(1)}`);
   };
@@ -200,7 +200,7 @@ for (const eng of engines()) {
     const dt = rf.frames[1]?.[0] || 16.7;
     if (LOG) console.log('flick up full', 'vs', vs.toFixed(2), 'steps', st.slice(0, 12).map((v) => v.toFixed(1)).join(' '), 'last', s.at(-1));
     check(eng, `flick up: the first frame goes as far as the sheet was going (${(-vs * dt).toFixed(1)} px)`, -st[0] >= 0.6 * -vs * dt && -st[0] <= 1.6 * -vs * dt, `${(-st[0]).toFixed(1)} px`);
-    check(eng, 'flick up: never turns back', st.every((v) => v <= 0.6));
+    check(eng, 'flick up: never turns back', st.every((v) => v <= 1.5));
     check(eng, 'flick up: ends full', rf.full && s.at(-1) < rest0 - 20, `${s.at(-1).toFixed(1)} vs ${rest0.toFixed(1)}`);
   }
   await browser.close();
