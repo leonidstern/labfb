@@ -21,10 +21,10 @@ let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the 
 // the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
 // --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-:host{all:initial!important;opacity:var(--bv-o,1)!important;translate:0 calc(var(--bv-pan,0px) + var(--bv-y,0px))!important;clip-path:var(--bv-clip,none)!important;transition:clip-path var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1),translate var(--bv-t,0ms) var(--bv-e,cubic-bezier(.32,.72,0,1))!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+:host{--_radius:var(--lab-radius,12px);--_r-s:6px;all:initial!important;opacity:var(--bv-o,1)!important;translate:0 calc(var(--bv-pan,0px) + var(--bv-y,0px))!important;clip-path:var(--bv-clip,none)!important;transition:clip-path var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1),translate var(--bv-t,0ms) var(--bv-e,cubic-bezier(.32,.72,0,1))!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
 .bv-bar{position:relative;flex:none;touch-action:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08);translate:0 var(--bv-bar,0px);transition:translate var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
-.bv-bar button{font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;color:inherit;background:transparent;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;transition:background-color var(--lab-t-quick,120ms) var(--lab-ease-out,cubic-bezier(0,0,.58,1))}
+.bv-bar button{font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;color:inherit;background:transparent;border:0;border-radius:var(--_r-s,6px);padding:5px 10px;cursor:pointer;transition:background-color var(--lab-t-quick,120ms) var(--lab-ease-out,cubic-bezier(0,0,.58,1))}
 .bv-bar button:hover{background:var(--lab-hover,rgba(0,0,0,.10))}
 .bv-bar button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
 .bv-name{position:absolute;left:50%;translate:-50% 0;width:calc(100% - 220px);pointer-events:none;text-align:center;font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
@@ -38,6 +38,7 @@ const CSS = `
 .bv-box #lab-board{position:absolute}
 @media (pointer:coarse){.bv-bar{z-index:1}.bv-bar button{position:relative;z-index:2;min-width:44px}.bv-bar button::before{content:"";position:absolute;left:0;right:0;top:-9px;bottom:-12px}}
 @media (prefers-color-scheme:dark){:host{background:#1b1b1a!important;color:#e9e8e4!important}.bv-bar button:hover{background:var(--lab-hover,rgba(255,255,255,.10))}.bv-bar{border-color:rgba(255,255,255,.08)}}
+@supports (corner-shape:squircle){:host{--_radius:calc(var(--lab-radius,12px)*1.8);--_r-s:11px}*{corner-shape:squircle}}
 `;
 const MIN = 0.25; // the least of the window it is dragged down to
 const HALF = 0.5; // a board opens at half height, the page above it, until it is set otherwise (Leo, 21 Nov: "open boards half not full by default")
@@ -509,12 +510,12 @@ export function own(name: string) {
 // straight under <body> it keeps off the screen's edges (in the shadow: what is on <lab-board> itself is the file's).
 const STRIP = `:host{display:block!important;box-sizing:border-box!important;margin:16px 0!important;font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:inherit;cursor:pointer}
 .edge{margin:0 16px}
-.box{border:1px solid color-mix(in srgb,currentColor 16%,transparent);border-radius:12px;padding:10px;background:color-mix(in srgb,rgb(52,199,89) 7%,transparent)}
+.box{border:1px solid color-mix(in srgb,currentColor 16%,transparent);border-radius:var(--_radius,12px);padding:10px;background:color-mix(in srgb,rgb(52,199,89) 7%,transparent)}
 .top{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
 .top b{font-weight:600}.top span{opacity:.65;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.top button{font:inherit;border:0;border-radius:999px;padding:4px 11px;cursor:pointer;background:rgba(52,199,89,.18);color:inherit}
+.top button{font:inherit;border:0;border-radius:var(--_radius,12px);padding:4px 11px;cursor:pointer;background:rgba(52,199,89,.18);color:inherit}
 .row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin}
-.row>*{flex:none;height:120px;border-radius:8px;background:color-mix(in srgb,currentColor 6%,transparent)}
+.row>*{flex:none;height:120px;border-radius:var(--_r-s,6px);background:color-mix(in srgb,currentColor 6%,transparent)}
 img{display:block;max-width:240px;object-fit:cover}
 .page{width:160px;padding:10px;box-sizing:border-box;overflow:hidden;opacity:.8}
 .none{opacity:.65;padding:4px 2px}`;
