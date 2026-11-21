@@ -637,11 +637,12 @@ export class Device {
     this.note('reload', why);
     this.go(async () => {
       if (widgetFixed()) {
-        // fixed (live.ts now): the page is asked for first. With its dev server down the lab answers a plain 502 with no widget:
-        // the page stays where it is and asks again in 2 s, instead of reloading onto that.
+        // fixed (live.ts now): the page is asked for first. With its dev server down the lab answers a plain 502, with its file
+        // gone its page list (200, for a folder) or "not found": none has a widget. The page stays where it is and asks again
+        // in 2 s, instead of reloading onto that.
         this.opening = true;
         const r = await this.ask({ path: this.url, headers: { accept: 'text/html' }, page: true }).catch(() => null);
-        if (!r || r.status >= 400) {
+        if (!r || r.status >= 400 || !/<script\b[^>]*\bdata-live\b/i.test(r.text)) {
           this.opening = false;
           this.waiting = true;
           const gen = this.gen;
