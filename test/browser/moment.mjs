@@ -96,22 +96,24 @@ try {
       const loop = await pin('loop', 'on the loop');
       const m = loop.c?.anchor?.moment;
       const want = (before.t % 4000) / 1000;
-      check(eng, 'the box shows the loop\'s moment while paused', /^loop \d+(\.\d)? of 4 s · pass \d+$/.test(loop.chip), loop.chip);
+      check(eng, 'the box has no chip for a loop (only a paused video gets one)', loop.chip === '', loop.chip);
       check(eng, 'the pin carries the loop\'s second inside one pass and its pass', m?.kind === 'loop' && m.of === 4 && Math.abs(m.at - want) < 0.11 && m.pass === Math.floor(before.t / 4000) + 1 && /loop/.test(m.what || ''), JSON.stringify({ m, want, t: before.t }));
       check(eng, 'the page stays paused after sending', (await loopState(p)).play === 'paused');
       // The track's empty end, the dot: each its own motion.
       const track = await pin('track', 'on the track', 0.95, 0.5);
       const tm = track.c?.anchor?.moment;
-      check(eng, 'a pin on the track (no motion of its own but the loop inside) takes the loop', tm?.kind === 'loop' && tm.sel === '#loop' && tm.of === 4 && /^loop [\d.]+ of 4 s · pass \d+$/.test(track.chip), JSON.stringify({ tm, chip: track.chip }));
+      check(eng, 'a pin on the track (no motion of its own but the loop inside) takes the loop', tm?.kind === 'loop' && tm.sel === '#loop' && tm.of === 4 && track.chip === '', JSON.stringify({ tm, chip: track.chip }));
       const dot = await pin('dot', 'on the dot', 0.5, 0.5);
       const dm = dot.c?.anchor?.moment;
-      check(eng, 'a pin on the dot takes the dot\'s own loop, not its neighbour\'s', dm?.kind === 'loop' && dm.sel === '#dot' && dm.of === 1.5 && /^loop [\d.]+ of 1\.5 s · pass \d+$/.test(dot.chip), JSON.stringify({ dm, chip: dot.chip }));
+      check(eng, 'a pin on the dot takes the dot\'s own loop, not its neighbour\'s', dm?.kind === 'loop' && dm.sel === '#dot' && dm.of === 1.5 && dot.chip === '', JSON.stringify({ dm, chip: dot.chip }));
       const gif = await pin('gif', 'on the gif');
-      check(eng, 'a pin on a GIF says how long it had been showing', gif.c?.anchor?.moment?.kind === 'gif' && /^GIF [\d.]+ s after it showed$/.test(gif.chip), JSON.stringify({ m: gif.c?.anchor?.moment, chip: gif.chip }));
+      check(eng, 'a pin on a GIF keeps how long it had been showing, with no chip', gif.c?.anchor?.moment?.kind === 'gif' && gif.chip === '', JSON.stringify({ m: gif.c?.anchor?.moment, chip: gif.chip }));
+      let vidPin = null;
       if (videoOk) {
         const vt = await p.evaluate(() => { const v = document.getElementById('vid'); return { t: v.currentTime, d: v.duration, paused: v.paused }; });
         const vid = await pin('vid', 'on the video');
         const vm = vid.c?.anchor?.moment;
+        vidPin = { vm };
         check(eng, 'a pin on the paused video carries its time and length', vt.paused && vm?.kind === 'video' && Math.abs(vm.at - vt.t) < 0.11 && Math.abs(vm.of - vt.d) < 0.11 && /^video \d:\d\d\.\d of \d:\d\d$/.test(vid.chip), JSON.stringify({ vm, vt, chip: vid.chip }));
       } else console.log(`skip ${eng.padEnd(8)} video (this engine can't play the WebM)`);
       const page = await pin('loop', 'second on the loop');
@@ -119,29 +121,44 @@ try {
       // The agent's text says it in words.
       const text = await (await fetch(`${B}/_lab/agent${PG}`)).text();
       check(eng, 'the agent reads the moment in words', /page paused at loop [\d.]+ of 4 s · pass \d+ \(div#loop\)/.test(text), text.split('\n').find((l) => /paused/.test(l)));
-      // Play on, then the sent pin's chip takes the page back to that moment.
+      // Play on, then the sent pin's chip takes the page back to that moment. Only a paused video has one (Leo, 21 Nov):
+      // the sent pin on the loop shows none.
       await p.keyboard.press('p');
       await until(p, () => document.getElementById('loop').getAnimations()[0]?.playState === 'running', null, 1000);
       await sleep(900);
       await p.reload();
       await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelectorAll('.pin').length >= 3), ROOT, 8000);
       await sleep(300);
-      const lr = await p.evaluate(() => document.getElementById('loop').getBoundingClientRect().toJSON());
-      // The pins nearest the loop, in order: on a busy machine (eight jobs at once) the nearest may still be settling,
-      // so a card without the moment chip is closed and the next one tried.
-      const boxes = await inRoot(p, `[...r.querySelectorAll('.pin')].map((n) => n.getBoundingClientRect().toJSON()).sort((a, b) => Math.hypot(a.left - ${lr.left + 20}, a.bottom - ${lr.top + lr.height / 2}) - Math.hypot(b.left - ${lr.left + 20}, b.bottom - ${lr.top + lr.height / 2})).slice(0, 4)`);
-      for (const pinBox of boxes) {
-        await p.mouse.click(pinBox.left + pinBox.width / 2, pinBox.top + pinBox.height / 2);
-        if (await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelector('.card button.moment')), ROOT, 3000)) break;
-        await p.keyboard.press('Escape');
+      const near = async (id) => {
+        const r = await p.evaluate((i) => document.getElementById(i).getBoundingClientRect().toJSON(), id);
+        // The pins nearest the thing, in order: on a busy machine (eight jobs at once) the nearest may still be settling,
+        // so a card that does not open is closed and the next one tried.
+        return inRoot(p, `[...r.querySelectorAll('.pin')].map((n) => n.getBoundingClientRect().toJSON()).sort((a, b) => Math.hypot(a.left - ${r.left + 20}, a.bottom - ${r.top + r.height / 2}) - Math.hypot(b.left - ${r.left + 20}, b.bottom - ${r.top + r.height / 2})).slice(0, 4)`);
+      };
+      const openNear = async (id, sel) => {
+        for (const pinBox of await near(id)) {
+          await p.mouse.click(pinBox.left + pinBox.width / 2, pinBox.top + pinBox.height / 2);
+          if (await until(p, (src) => Boolean(new Function(`return ${src}`)()?.querySelector('.card .body')), ROOT, 3000) && (!sel || (await inRoot(p, `Boolean(r.querySelector(${JSON.stringify(sel)}))`)))) return true;
+          await p.keyboard.press('Escape');
+          await sleep(300);
+        }
+        return false;
+      };
+      await openNear('loop');
+      check(eng, 'the sent pin on the loop shows no moment chip', !(await inRoot(p, "Boolean(r.querySelector('.card .moment'))")));
+      await p.keyboard.press('Escape');
+      await sleep(300);
+      if (videoOk) {
+        const got = await openNear('vid', '.card button.moment');
+        const shown = await inRoot(p, "r.querySelector('.card button.moment')?.textContent || ''");
+        check(eng, 'the sent pin on the paused video shows its moment', got && /^video \d:\d\d\.\d of \d:\d\d$/.test(shown), shown);
+        await p.evaluate(() => { const v = document.getElementById('vid'); v.play?.(); });
+        await sleep(500);
+        await inRoot(p, "r.querySelector('.card button.moment').click()");
         await sleep(300);
+        const back = await p.evaluate(() => { const v = document.getElementById('vid'); return { paused: v.paused, t: v.currentTime }; });
+        check(eng, 'its chip pauses the page at that moment', back.paused && Math.abs(back.t - vidPin.vm.at) < 0.11, JSON.stringify({ back, at: vidPin.vm?.at }));
       }
-      const shown = await inRoot(p, "r.querySelector('.card button.moment')?.textContent || ''");
-      await inRoot(p, "r.querySelector('.card button.moment').click()");
-      await sleep(200);
-      const after = await loopState(p);
-      check(eng, 'the sent pin shows its moment', /^loop [\d.]+ of 4 s · pass \d+$/.test(shown), shown);
-      check(eng, 'its chip pauses the page at that moment', after.play === 'paused' && Math.abs(after.t - m.ms) < 20, JSON.stringify({ after, ms: m?.ms }));
       // The other ways (Leo, 19 Nov: "it says only if i pause one"). Nothing paused: a pin on a moving thing still
       // keeps the moment it showed as the pin went down, said "at …", with no ⏸.
       PG = `/${eng}-c`;
@@ -150,12 +167,12 @@ try {
       await sleep(1200);
       const cDot = await pin('dot', 'moving dot', 0.5, 0.5);
       const cdm = cDot.c?.anchor?.moment;
-      check(eng, 'nothing paused: a pin on the dot keeps its moment, "at …", no ⏸', cdm?.kind === 'loop' && cdm.sel === '#dot' && cdm.playing === true && !cDot.icon && /^at loop [\d.]+ of 1\.5 s · pass \d+$/.test(cDot.chip) && !cDot.c?.anchor?.paused, JSON.stringify({ cdm, chip: cDot.chip, icon: cDot.icon }));
+      check(eng, 'nothing paused: a pin on the dot keeps its moment, "at …", no ⏸', cdm?.kind === 'loop' && cdm.sel === '#dot' && cdm.playing === true && cDot.chip === '' && !cDot.c?.anchor?.paused, JSON.stringify({ cdm, chip: cDot.chip, icon: cDot.icon }));
       const cTrack = await pin('track', 'moving track', 0.95, 0.5);
-      check(eng, 'nothing paused: a pin on the track keeps the loop\'s moment', cTrack.c?.anchor?.moment?.sel === '#loop' && cTrack.c.anchor.moment.playing === true && cTrack.chip.startsWith('at loop '), JSON.stringify({ m: cTrack.c?.anchor?.moment, chip: cTrack.chip }));
+      check(eng, 'nothing paused: a pin on the track keeps the loop\'s moment', cTrack.c?.anchor?.moment?.sel === '#loop' && cTrack.c.anchor.moment.playing === true && cTrack.chip === '', JSON.stringify({ m: cTrack.c?.anchor?.moment, chip: cTrack.chip }));
       if (videoOk) {
         const cVid = await pin('vid', 'moving video');
-        check(eng, 'nothing paused: a pin on the video keeps its time', cVid.c?.anchor?.moment?.kind === 'video' && cVid.c.anchor.moment.playing === true && /^at video \d:\d\d\.\d of \d:\d\d$/.test(cVid.chip), JSON.stringify({ m: cVid.c?.anchor?.moment, chip: cVid.chip }));
+        check(eng, 'nothing paused: a pin on the video keeps its time', cVid.c?.anchor?.moment?.kind === 'video' && cVid.c.anchor.moment.playing === true && cVid.chip === '', JSON.stringify({ m: cVid.c?.anchor?.moment, chip: cVid.chip }));
       }
       const text2 = await (await fetch(`${B}/_lab/agent${PG}`)).text();
       check(eng, 'the agent reads a moving moment as such', /moment: at loop [\d.]+ of 1\.5 s · pass \d+ \(div#dot\) \(it was moving/.test(text2), text2.split('\n').find((l) => /moment:/.test(l)));
@@ -177,9 +194,9 @@ try {
       await sleep(400);
       const bLoop = await pin('loop', 'one paused loop', 0, 0.85);
       const blm = bLoop.c?.anchor?.moment;
-      check(eng, 'one paused: a pin on it has its paused moment, with ⏸', blm?.sel === '#loop' && !blm.playing && bLoop.icon && /^loop [\d.]+ of 4 s · pass \d+$/.test(bLoop.chip), JSON.stringify({ blm, chip: bLoop.chip, icon: bLoop.icon }));
+      check(eng, 'one paused: a pin on it has its paused moment, with ⏸', blm?.sel === '#loop' && !blm.playing && bLoop.chip === '', JSON.stringify({ blm, chip: bLoop.chip, icon: bLoop.icon }));
       const bDot = await pin('dot', 'dot beside it', 0.5, 0.5);
-      check(eng, 'one paused: a pin on the dot beside it has the dot\'s moving moment', bDot.c?.anchor?.moment?.sel === '#dot' && bDot.c.anchor.moment.playing === true && /^at loop [\d.]+ of 1\.5 s/.test(bDot.chip), JSON.stringify({ m: bDot.c?.anchor?.moment, chip: bDot.chip }));
+      check(eng, 'one paused: a pin on the dot beside it has the dot\'s moving moment', bDot.c?.anchor?.moment?.sel === '#dot' && bDot.c.anchor.moment.playing === true && bDot.chip === '', JSON.stringify({ m: bDot.c?.anchor?.moment, chip: bDot.chip }));
       await ctx.close();
       const key = JSON.parse(fs.readFileSync(path.join(DIR, '.lab/server.json'), 'utf8')).agent;
       for (const c of (await comments()).filter((c) => !c.parent)) await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': key, 'x-lab-agent': '1' }, body: JSON.stringify({ page: PG, action: 'delete', id: c.id }) });
