@@ -156,24 +156,35 @@ export function show(name: string, o: Opts) {
   let nudged = 0;
   let scrollFrom = -1; // where the page was when the keyboard came up
   let grown = false; // a half view that is full while the keyboard is up
+  let grownAt = -1e9;
+  let typed = false; // the keyboard has been up since scrollFrom was taken
   let loop = 0;
   let quiet = 0;
   const follow = () => {
     if (!vv || !matchMedia('(pointer: coarse)').matches) return;
     const typing = Math.abs(vv.scale - 1) < 0.01 && innerHeight - vv.height > 60; // the keyboard is up
-    if (typing && scrollFrom < 0) scrollFrom = scrollY;
-    else if (!typing && scrollFrom >= 0 && !vv.offsetTop) {
+    const sr = document.querySelector('[data-lab-comments]')?.shadowRoot;
+    const sheet = sr?.querySelector('.float:not(.out)')?.getBoundingClientRect();
+    if (typing) {
+      typed = true;
+      if (scrollFrom < 0) scrollFrom = scrollY;
+    } else if (typed && !sheet && scrollFrom >= 0 && !vv.offsetTop) {
       if (Math.abs(scrollY - scrollFrom) > 1) scrollTo({ top: scrollFrom, behavior: 'instant' as ScrollBehavior }); // the page iOS scrolled for the keyboard goes back
       scrollFrom = -1;
+      typed = false;
     }
     // A half view grows to the whole screen while the keyboard is up (its top part would be panned off, and it would slide),
-    // and settles back to its size when the keyboard goes (Leo, 21 Nov: "canvas still jumping", the half board).
+    // and settles back to its size once the keyboard and the comment's sheet have gone (Leo, 21 Nov: "canvas still jumping",
+    // the half board). Neither resize fits the board again: it stays where it is on the screen (api.hold).
     if (typing && size < 1 && !grown) {
       grown = true;
+      grownAt = performance.now();
+      board.api.hold(true);
       view.style.setProperty('--bv-h', '100%');
-    } else if (!typing && grown && !vv.offsetTop) {
+    } else if (!typing && grown && !sheet && !vv.offsetTop) {
       grown = false;
       paintSize();
+      board.api.hold(false);
     }
     const viewTop = innerHeight - view.offsetHeight; // where the view starts when nothing is panned
     const next = typing && viewTop < vv.height - 160 ? Math.round(vv.offsetTop) : !typing ? Math.round(vv.offsetTop) : 0;
@@ -186,10 +197,9 @@ export function show(name: string, o: Opts) {
       at = view.getBoundingClientRect();
       quiet = 0;
     }
-    const sr = document.querySelector('[data-lab-comments]')?.shadowRoot;
     const pin = sr?.querySelector('.pin.draft')?.getBoundingClientRect();
-    const sheet = sr?.querySelector('.float:not(.out)')?.getBoundingClientRect();
-    if (typing && pin && sheet && !nudged && sheet.top > 0) {
+    // Not in the frames right after the view grew: the pins are drawn again for the new box first.
+    if (typing && pin && sheet && !nudged && sheet.top > 0 && performance.now() - grownAt > 80) {
       const over = pin.bottom + 16 - sheet.top;
       const dy = over > 0 ? -over - 24 : pin.top < 56 ? 56 - pin.top : 0;
       if (dy) nudged = board.api.nudge(dy);
@@ -199,6 +209,13 @@ export function show(name: string, o: Opts) {
     }
     moved();
   };
+  // Where the page was before the keyboard: taken as a field is focused, before iOS scrolls for it (taken when the keyboard
+  // was already up, it was the scrolled place, and the page was put back there: 21 Nov simulator, 423 instead of 0).
+  const focused = () => {
+    if (scrollFrom < 0 && matchMedia('(pointer: coarse)').matches) scrollFrom = scrollY;
+    watch();
+  };
+  addEventListener('focusin', focused);
   // iOS pans the screen in steps that come as events only now and then: the view follows every frame while it moves.
   const tick = () => {
     const before = pan;
@@ -240,7 +257,7 @@ export function show(name: string, o: Opts) {
     view.style.setProperty('--bv-o', '0');
     requestAnimationFrame(fade);
   }
-  cur = { name, view, destroy: () => (ro.disconnect(), vv?.removeEventListener('resize', watch), vv?.removeEventListener('scroll', watch), cancelAnimationFrame(loop), board.destroy()), onClose: o.onClose, restoration, pushed };
+  cur = { name, view, destroy: () => (ro.disconnect(), removeEventListener('focusin', focused), vv?.removeEventListener('resize', watch), vv?.removeEventListener('scroll', watch), cancelAnimationFrame(loop), board.destroy()), onClose: o.onClose, restoration, pushed };
   moved();
 }
 

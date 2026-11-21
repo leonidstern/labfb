@@ -104,6 +104,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   measure();
   let moved = false; // the person moved the camera: a resize no longer fits everything again
+  let held = false; // a resize that isn't the person's (a phone's keyboard growing a half view): the board stays where it is on the screen
   let selected = '';
   let entered = '';
   let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
@@ -177,7 +178,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (left > 1) return void (still = setTimeout(rest, left));
     if (sizing) {
       sizing = false;
-      return go(moved ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
+      return go(moved || held ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
     }
     layered = false;
     world.style.willChange = '';
@@ -204,6 +205,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // The camera goes to next, held to the board's edges: past an edge it just stops (Leo, 19 Nov: "remove weird bounce
   // on edge of canvas": it gave way and sprang back). pan: a move that keeps a fitted frame's focus (a phone's swipe).
   let nudging = 0; // the camera's glide to a draft pin (api.nudge)
+  let holdOff: ReturnType<typeof setTimeout> | undefined;
   const go = (next: Cam, user = true, pan = false) => {
     const c = clamp(next, boxes(), view);
     if (user) moved = true;
@@ -761,6 +763,12 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     },
     camera: () => ({ ...cam }),
     /** The camera moves by dy screen px (the keyboard is up: a draft pin comes above its sheet); answers how far it did go (it stops at the board's edges). */
+    /** While on, the view's resizes keep the board where it is on the screen instead of fitting it again (a phone's keyboard). */
+    hold: (on: boolean) => {
+      clearTimeout(holdOff);
+      if (on) held = true;
+      else holdOff = setTimeout(() => (held = false), REST * 3); // after the last resize has rested
+    },
     nudge: (dy: number) => {
       const from = cam.y;
       const to = clamp({ ...cam, y: cam.y + dy / cam.z }, boxes(), view).y;
@@ -790,7 +798,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const ro = new ResizeObserver(() => {
     const [px, py, pv] = [ox, oy, view];
     measure();
-    if (!sized || !cards.length) return void ((sized = true), go(moved ? cam : fitAll(boxes(), view), false));
+    if (!sized || !cards.length) return void ((sized = true), go(moved || held ? cam : fitAll(boxes(), view), false));
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
     cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
     sizing = boxed = true;
