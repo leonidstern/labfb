@@ -1207,10 +1207,14 @@ export async function run(plan, ctx, opts) {
         // Errors: every line known by its word.
         const has = (x, tok) => new RegExp(`${tok}(?![0-9a-z])`).test(x); // (…n1 is not …n10)
         const mine = (e) => A.errors?.filter((x) => (e.re ? e.re.test(x) : has(x, e.tok))) || [];
-        // What a page load keeps: the last eight different errors it threw (console.error is none).
+        // What a page load keeps: the last eight different errors it threw (console.error is none); the page's text holds
+        // eight in all, shared out between the devices with a page open that threw some (local.mjs errorList), so with
+        // several of them only each one's newest 8 / how many are promised.
         const kept = (e) => {
           const later = new Set(errs.filter((x) => x.d === e.d && x.load === e.load && x.key === e.key && x.how !== 'console' && errs.indexOf(x) > errs.indexOf(e)).map((x) => (x.re ? 'a failed fetch' : x.tok)));
-          return later.size < 8 ? true : later.size > 8 ? false : null; // (null: at the edge, either way)
+          const reporters = new Set(errs.filter((x) => x.key === e.key && x.how !== 'console' && devices[x.d].loads === x.load).map((x) => x.d)).add(e.d).size;
+          if (later.size > 8) return false;
+          return later.size < Math.min(8, Math.max(1, Math.floor(8 / reporters))) ? true : null; // (null: at the edge, either way)
         };
         for (const e of errs) {
           const dv = devices[e.d];
