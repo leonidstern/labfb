@@ -28,7 +28,7 @@ import { anyWriting, bindComposer, composer } from './widget/composer.ts';
 import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
-import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, glideLeft, holdKeyboard, leave, letGo, revealDraft, roomFor, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
+import { afterLeave, backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, hurryGlide, leave, letGo, revealDraft, roomFor, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
 import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
@@ -1643,17 +1643,12 @@ import { bindKeys } from './widget/keys.ts';
     e.preventDefault();
     const box = /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'));
     if (box && root.activeElement === box) box.blur(); // focused without a keyboard: again from the lift, so it opens
-    // The keyboard comes once the page has stopped gliding the pin into view (sheets.ts revealDraft). Together, iOS pans the
-    // screen under the scroll and the sheet is thrown about: a lift 0.1 s after the pin left the page 101 px off and the
-    // sheet's top went 331, 182, 234, 197, 267 (iOS 27 simulator, 21 Nov). One timer, set here in the lift: the keyboard
-    // opens for a focus that a touch's own timer makes, not for one from a frame callback.
-    const cursor = () => {
-      S.pinnedByHold = false;
-      /** @type {HTMLElement | null} */ (root.querySelector('.float textarea'))?.focus({ preventScroll: true });
-    };
-    const wait = glideLeft();
-    if (wait > 16) setTimeout(cursor, wait + 16);
-    else cursor();
+    // The cursor goes in here, in the lift itself: a real iPhone opens its keyboard only for a focus made in the touch (one
+    // made a moment later, from a timer, opened it in the simulator and not on Leo's phone: "its not in focus now", 21 Nov).
+    // The page may still be gliding the pin into view (sheets.ts revealDraft): it hurries, to be there before the keyboard is.
+    S.pinnedByHold = false;
+    hurryGlide();
+    box?.focus({ preventScroll: true });
   }, { capture: true, passive: false });
   // iOS took the touch (its own long press): no lift comes, and a tap in the box opens the keyboard. The next touch's
   // lift isn't this hold's.

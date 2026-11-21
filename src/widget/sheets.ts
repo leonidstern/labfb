@@ -185,7 +185,7 @@ export function revealDraft() {
   if (!(p.top < free || p.bottom > sheetTop - 16)) return;
   const to = Math.max(0, scrollY + (p.top + p.bottom) / 2 - (free + sheetTop) / 2);
   W.S.revealed = { from: scrollY, to }; // where you were: the page goes back there once the comment is sent or dropped (backFromReveal)
-  scrollPageTo(to, 360); // brisk: the keyboard waits for it (comments.js, the lift after a hold)
+  scrollPageTo(to, 300); // brisk: the keyboard comes with the lift, and the page should be there first (hurryGlide)
 }
 
 // After a new comment's sheet has gone, the page scrolls back to where it was before revealDraft moved it, unless you
@@ -220,16 +220,16 @@ export function scrollPageTo(top: number, cap = 0) {
   if (W.coarse) roomFor(top);
   const to = Math.max(0, top);
   cancelAnimationFrame(glideId);
-  glideEnds = 0;
-  if (W.still.matches || Math.abs(to - scrollY) < 2) return scrollTo({ top: to, behavior: 'auto' });
+  glideTo = null;
+  if (W.still.matches || cap < 0 || Math.abs(to - scrollY) < 2) return scrollTo({ top: to, behavior: 'auto' });
   // Its own glide, ease in and out and longer for a longer way: the browser's smooth scroll took 0.28 s for 500 px, which
   // reads as a jump (Leo, 21 Nov: "scrolling position to pin can be smoother"). A touch or a wheel hands the page back.
   const from = scrollY;
   // Up to 0.9 s: at 0.56 s a pin 2700 px away went by at 237 px a frame, which is a jump too (iOS 27 simulator, 21 Nov).
   const ms = cap ? Math.min(cap, 200 + Math.abs(to - from) * 0.35) : Math.min(900, 260 + Math.abs(to - from) * 0.4);
   const t0 = performance.now();
-  glideEnds = t0 + ms;
-  const stop = () => (cancelAnimationFrame(glideId), (glideEnds = 0), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
+  glideTo = to;
+  const stop = () => (cancelAnimationFrame(glideId), (glideTo = null), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
   addEventListener('touchstart', stop, { passive: true });
   addEventListener('wheel', stop, { passive: true });
   const step = (now: number) => {
@@ -241,9 +241,19 @@ export function scrollPageTo(top: number, cap = 0) {
   glideId = requestAnimationFrame(step);
 }
 let glideId = 0;
-let glideEnds = 0; // when the glide under way is over
-/** How long the page's glide still has to go, ms (0: none under way). */
-export const glideLeft = () => Math.max(0, glideEnds - performance.now());
+let glideTo: number | null = null; // where the glide under way is going
+// The keyboard is coming (the lift after a hold put the cursor in a new comment's box) and the page is still gliding its
+// pin into view: it gets there in a few frames, and at once if the keyboard is there first. Scrolled with the keyboard up,
+// iOS pans the screen instead of the page, and the sheet is thrown about (a lift 0.1 s after the pin: the page was left
+// 101 px off and the sheet's top went 331, 182, 234, 197, 267; iOS 27 simulator, 21 Nov).
+export function hurryGlide() {
+  if (glideTo == null) return;
+  const to = glideTo;
+  const keys = () => W.vv && innerHeight - W.vv.height > 60 && (W.vv.removeEventListener('resize', keys), glideTo === to && scrollPageTo(to, -1));
+  W.vv?.addEventListener('resize', keys);
+  setTimeout(() => W.vv?.removeEventListener('resize', keys), 1000);
+  scrollPageTo(to, 90);
+}
 // Room below the page's end, so that it can scroll to `top` on a phone. The page's own height is html's box when the page is
 // shorter than the screen: scrollHeight is never less than the screen's height, so a short page read as tall as the screen,
 // got 283 px of room where it needed 817, and could not scroll at all: the pin stayed under the sheet until the keyboard
