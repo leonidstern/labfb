@@ -195,7 +195,23 @@ export function backFromReveal() {
   W.S.revealed = null;
   // 320: the keyboard's pan moves the page too (about 300 px, 21 Nov simulator: it was left 382 down from 425); a sheet holds the page still
   // otherwise, so what moved it is that pan, not a hand.
-  if (r && W.coarse && Math.abs(scrollY - r.to) < 320) scrollPageTo(r.from);
+  if (!(r && W.coarse && Math.abs(scrollY - r.to) < 320)) return;
+  // Once the keyboard has gone: scrolled while it was still going down, iOS panned the screen under the scroll (up to the
+  // keyboard's whole height, 303 px, for a frame or two) and the page jumped down before it came to rest (iOS 27
+  // simulator, 21 Nov). Not if another sheet has opened by then.
+  const up = () => Boolean(W.vv && innerHeight - W.vv.height > 60);
+  let went = false;
+  const go = () => {
+    if (went) return;
+    went = true;
+    clearTimeout(t);
+    W.vv?.removeEventListener('resize', gone);
+    if (!W.S.revealed && !W.host.hasAttribute('data-sheet')) scrollPageTo(r.from);
+  };
+  const gone = () => !up() && go();
+  const t = setTimeout(go, 800);
+  if (!up()) return go();
+  W.vv.addEventListener('resize', gone);
 }
 
 // Scrolls the page to top (smoothly, unless motion is reduced). A spot near the page's end can't scroll up into the
@@ -214,7 +230,8 @@ export function scrollPageTo(top: number) {
   // Its own glide, ease in and out and longer for a longer way: the browser's smooth scroll took 0.28 s for 500 px, which
   // reads as a jump (Leo, 21 Nov: "scrolling position to pin can be smoother"). A touch or a wheel hands the page back.
   const from = scrollY;
-  const ms = Math.min(560, 220 + Math.abs(to - from) * 0.45);
+  // Up to 0.9 s: at 0.56 s a pin 2700 px away went by at 237 px a frame, which is a jump too (iOS 27 simulator, 21 Nov).
+  const ms = Math.min(900, 260 + Math.abs(to - from) * 0.4);
   const t0 = performance.now();
   const stop = () => (cancelAnimationFrame(glideId), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
   addEventListener('touchstart', stop, { passive: true });
