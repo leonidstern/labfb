@@ -98,7 +98,7 @@ export function bindAnchoring(deps: Deps) {
 
 // A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
 // Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
-export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
+export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold' | 'calm', times = 1): number {
   const v = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(getComputedStyle(host).getPropertyValue(`--_t-${token}`));
   return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) * times : 0;
 }

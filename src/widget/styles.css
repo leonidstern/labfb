@@ -24,6 +24,7 @@
   --_twitch: calc(var(--_t-loop) * 2) ease-in-out infinite; /* the listening mark's ears: a twitch, then a long rest (two loops) */
   --_fade: var(--_t-quick) var(--_ease-out); --_fade-base: var(--_t-base) var(--_ease-out); /* the two fades (lab-fade): duration and curve together */
   --_t-hold: var(--lab-t-hold, 1000ms);      /* how long a highlight stays; a wait, not a movement, so it is kept with reduced motion */
+  --_t-calm: var(--lab-t-calm, 120ms);       /* reduced motion only: the crossfade that stands in for a slide, a zoom or a pop */
   --_ease: var(--lab-ease, cubic-bezier(.2, .8, .2, 1));            /* standard: it starts quickly and settles */
   --_ease-out: var(--lab-ease-out, cubic-bezier(0, 0, .58, 1));     /* a fade or a colour coming in */
   --_ease-in: var(--lab-ease-in, cubic-bezier(.4, 0, 1, 1));        /* something leaving: it speeds up as it goes */
@@ -462,7 +463,6 @@ kbd, .motion-ctl { transition: opacity var(--_t-quick) var(--_ease-out); }
                                   display var(--_t-quick) allow-discrete, overlay var(--_t-quick) allow-discrete; }
 .more-menu[popover]:popover-open { opacity: 1; translate: 0 0; scale: 1; transition-duration: var(--_t-base); transition-timing-function: var(--_ease); }
 @starting-style { .more-menu[popover]:popover-open { opacity: 1; translate: 0 4px; scale: .98; } } /* lab-in: it rises, no fade */
-@media (prefers-reduced-motion: reduce) { .more-menu[popover] { transition: none; } }
 .more-menu button { border: 0; background: none; text-align: left; font: inherit; font-size: 13px; letter-spacing: -.006em; color: var(--_fg); padding: 7px 10px;
                     border-radius: var(--_r-s); cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 12px; white-space: nowrap; }
 .more-menu button:hover:not(:disabled) { background: var(--_soft); }
@@ -539,7 +539,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card > .foot { margin-top: 0; padding-top: 6px; }
   .card .composer { margin-top: 0; }
   .card > .nav { flex: none; margin: -6px 0 0; padding: 0 12px; }
-  .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; display: inline-flex; align-items: center; } /* 44 px tall to tap (iOS 44 pt) */
+  .card .nav .btn { font-size: 14px; letter-spacing: -.011em; padding: 0 2px; min-height: 44px; min-width: 44px; justify-content: center; display: inline-flex; align-items: center; } /* 44 pt to tap (iOS) */
+  .card > .nav { position: relative; z-index: 2; } /* its 6 px pulled under the reply box stay tappable */
   .card .nav { gap: 16px; flex-wrap: wrap; row-gap: 0; } /* too narrow for one row: reopen / delete drop under, on the right */
   .card .nav .acts { margin: 0 0 0 auto; gap: 20px; }
   .box.one .who span { font-size: 16px; letter-spacing: -.019em; } /* "as" the size of the name beside it */ /* reopen / delete share the prev / next row, on the right */
@@ -614,9 +615,9 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .msg .quote { font-size: 14px; letter-spacing: -.011em; }
   .pin.moved:not(.resolved) { scale: .64; }
   /* The same one bar as on computers, each segment 44 px tall to tap (iOS 44 pt); the menu opens above it. */
-  .bar > button { padding: 12px 14px; min-height: 44px; }
+  .bar > button { padding: 12px 14px; min-height: 44px; min-width: 44px; }
   .more-menu { bottom: 72px; min-width: 200px; }
-  .more-menu button { padding: 11px 12px; font-size: 15px; letter-spacing: -.016em; }
+  .more-menu button { padding: 11px 12px; font-size: 15px; letter-spacing: -.016em; min-height: 44px; }
 }
 /* Reaches past the screen's edges, under Safari's status bar and toolbar, so the page is dimmed everywhere. */
 .scrim { cursor: pointer; display: none; position: fixed; inset: -50vh 0; background: rgba(0, 0, 0, .4); z-index: 2; touch-action: none; }
@@ -650,7 +651,8 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chat-btn.stale .mark { opacity: .4; }
   .chat-btn[data-agent=working] .mark :is(.e1, .e2) { animation: lab-twitch var(--_twitch); }
   .chat-btn[data-agent=working] .mark .e2 { animation-delay: calc(var(--_t-quick) * 1.5); }
-  .send { width: 36px; height: 36px; }
+  .send { width: 36px; height: 36px; position: relative; }
+  .send::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; } /* 44 pt to hit, 36 to see */
   .send .arr { width: 17px; height: 15px; margin: auto; }
 }
 /* Narrow screens: the buttons sit a row above the listening label, so neither covers the other. */
@@ -721,4 +723,19 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .acts .use span { font-size: 13px; letter-spacing: -.003em; }
   .acts:not(:where(.row)) .fold { min-height: 44px; padding-inline: 4px 12px; font-size: 14px; letter-spacing: -.011em; }
   .acts:not(:where(.row)) .fold { padding-inline: 12px 4px; }
+}
+/* Reduced motion, part two (Apple: replace movement with a crossfade, an instant change only for something tiny). The
+   tokens above are 0 ms here, so a slide, a zoom or a rise ends where it would have: and a sheet, a card, a menu or a
+   box would pop in whole in one frame. So what appears or goes keeps a short fade (--_t-calm) and nothing translates or
+   scales. After every rule it replaces, so it wins; normal motion is not touched. */
+@media (prefers-reduced-motion: reduce) {
+  .card.in, .float.in, .fresh, .list:not([hidden]), .sw-box, .more-menu:not([popover]) { animation: lab-fade var(--_t-calm) var(--_ease-out); }
+  .card.out, .float.out, .more-menu.out, .sw-box.out, .hint.out { animation: lab-gone var(--_t-calm) var(--_ease-in) forwards; }
+  /* The ⋯ menu on a computer: a popover, which fades in by transition and out by the .out class. */
+  .more-menu[popover], .more-menu[popover]:popover-open { translate: none; scale: none; transition: opacity var(--_t-calm) var(--_ease-out); }
+  @starting-style { .more-menu[popover]:popover-open { opacity: 0; translate: none; scale: none; } }
+  .more-menu[popover].out:not(:popover-open) { display: grid; opacity: 1; } /* closing: kept shown for its fade (comments.js, beforetoggle) */
+  /* The bar and the pill stay where they are and fade as a sheet opens (they slid under or off the screen); the section line does the same (sections.css, loaded later). */
+  :host([data-sheet]) :is(.bar, .listener, .left) { transform: none; transition: opacity var(--_t-calm) var(--_ease-out); }
+  :is(.bar, .listener, .left) { transition: opacity var(--_t-calm) var(--_ease-out); }
 }

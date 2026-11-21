@@ -132,7 +132,14 @@ export function letGo(node: HTMLElement) {
 
 // Phones: a sheet slides down and away (see leave), then it closes.
 export function slideAway(node, close, ms = 0, speed = 0) {
-  if (!W.coarse || !node || W.still.matches) return close();
+  if (!W.coarse || !node) return close();
+  if (W.still.matches) { // reduced motion: no slide, the sheet fades out (styles.css, --_t-calm)
+    const d = W.ms('calm');
+    node.style.setProperty('transition', `opacity ${d}ms var(--_ease-in)`, 'important');
+    node.style.setProperty('opacity', '0', 'important');
+    node.style.setProperty('pointer-events', 'none', 'important');
+    return void setTimeout(() => (close(), HELD.forEach((k) => node.style.removeProperty(k))), d);
+  }
   const dur = leave(node, ms, false, speed);
   W.bar.style.transition = `transform ${leaveBar}, opacity ${dur}ms var(--_ease-out)`;
   W.host.style.setProperty('--lab-p', '1'); // the bar comes up as the sheet goes down
