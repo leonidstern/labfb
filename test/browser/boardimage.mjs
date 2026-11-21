@@ -77,6 +77,8 @@ try {
       });
       await sleep(800);
       check(eng, 'a paste into the comment box adds no frame', (await frames(name)).length === n1);
+      await p.locator('.atts .x').first().click({ timeout: 1500 }).catch(() => {}); // with comment pictures (attach.ts) the box takes the paste as an attachment: not a real picture here, so it goes
+      await area.focus();
       await p.keyboard.type('crop here');
       await p.keyboard.press('Enter');
       let saved;

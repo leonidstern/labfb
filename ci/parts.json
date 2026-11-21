@@ -20,6 +20,8 @@
     "motion.ts": "pause and ¼ speed for what moves on the page (videos, animations), the controls beside each, and a pin's moment on it; its own file (public/_lab/motion.js), loaded once the page has something that moves, ⌥ is held, P or S is pressed, or a comment has a moment",
     "motion.css": "the styles of motion.ts, which brings them with it",
     "actions.ts": "action buttons: a data-lab-action element on the page opens a comment with its words, the agent acts on it",
+    "attach.ts": "the pictures of a comment: the strip above a box that holds some (paste, drop, ✕), the send with their tokens, and a message's thumbnails; its own file (public/_lab/attach.js), loaded when a picture comes or a message has one",
+    "attach.css": "the styles of attach.ts, which brings them with it",
     "pics.ts": "a picture made ready to send (the board's paste and a comment's attachment): kept as it is when small, else drawn smaller and encoded again; its own file (public/_lab/pics.js), loaded the first time a picture is put in",
     "sections.ts": "the section bar: each section with a heading, current one filled, new and updated marked, read kept per person in the lab; its own file (public/_lab/sections.js), loaded when the page may show the bar",
     "sections.css": "the styles of sections.ts, which brings them with it",

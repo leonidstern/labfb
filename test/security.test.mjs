@@ -448,6 +448,22 @@ test('a guest adds pictures like the owner: more than 20, until the board is at 
   assert.equal((await send()).status, 422, 'and the board is full again');
 });
 
+test('a guest with a pass may attach a picture to a comment and see it; without a pass, neither', { skip: !lan && 'no local network address to come in on' }, async () => {
+  const cookie = (await wraw(new URL((await invite())[0]).pathname, { host: lan })).cookie.split(';')[0];
+  const as = (p, { method = 'GET', body, headers = {} } = {}) => wraw(p, { host: lan, method, body, headers: { origin: `http://${lan}:${WPORT}`, ...headers } });
+  assert.equal((await as('/_lab/api/image', { method: 'POST', body: png(), headers: { 'content-type': 'image/png' } })).status, 403, 'no pass: the gate');
+  const up = await as('/_lab/api/image', { method: 'POST', body: png(9, 7), headers: { 'content-type': 'image/png', cookie } });
+  assert.equal(up.status, 201, up.text);
+  const { token } = JSON.parse(up.text);
+  const say = await as('/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', cookie }, body: JSON.stringify({ page: '/index', name: 'Mira', text: 'see', attachments: [token], anchor: { kind: 'page', selector: 'h1', x: 0.1, y: 0.1, docX: 1, docY: 1, width: 1000, element: '<h1>' } }) });
+  assert.equal(say.status, 201, say.text);
+  const c = JSON.parse(say.text).comment;
+  assert.deepEqual(c.images.map((i) => [i.w, i.h]), [[9, 7]]);
+  assert.equal(c.from, 'wifi guest');
+  assert.equal((await as(`/_lab/attachments/${c.id}-1.png`, { headers: { cookie } })).status, 200, 'a guest with a pass sees it');
+  assert.equal((await as(`/_lab/attachments/${c.id}-1.png`)).status, 403, 'a guest without one gets the gate');
+});
+
 test('a one-time link works once, and an unknown one never', async () => {
   const path_ = new URL((await invite())[0]).pathname;
   const first = await wraw(path_);

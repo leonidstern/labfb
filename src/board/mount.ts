@@ -39,7 +39,7 @@ const css = `
 #lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
 #lab-board .f.off{content-visibility:hidden}
 #lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
-#lab-board iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
+#lab-board iframe,#lab-board img{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
 #lab-board .c{position:absolute;inset:0;box-sizing:border-box;padding:calc(20px*var(--iz));font-size:calc(14px*var(--iz));line-height:1.5;color:#1d1d1b;background:#f6f5f1}
@@ -54,9 +54,9 @@ const css = `
 #lab-board .zm .zo{min-width:3.2em;text-align:right}
 #lab-board .zm:not(.open) .zc{display:none}
 @media (prefers-color-scheme:dark){#lab-board .zm button:hover,#lab-board .zm.open button{background:rgba(255,255,255,.08)}}
-#lab-board img.pic{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;background:#fff}
+#lab-board img{object-fit:contain}
 #lab-board.drop{outline:2px solid #1f7a4d;outline-offset:-2px}
-#lab-board .ghost{position:absolute;display:grid;place-items:center;border:calc(1px*var(--iz,1)) dashed currentColor;background:rgba(127,127,127,.12);font-size:calc(14px*var(--iz,1));opacity:.8;pointer-events:none}
+#lab-board .ghost{position:absolute;width:200px;height:120px;margin:-60px 0 0 -100px;display:grid;place-items:center;border:calc(1px*var(--iz,1)) dashed currentColor;background:rgba(127,127,127,.12);font-size:calc(14px*var(--iz,1));opacity:.8;pointer-events:none}
 #lab-board .note{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 32px);padding:8px 12px;border-radius:8px;background:#1d1d1b;color:#fff;pointer-events:none}
 #lab-board .done{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
@@ -292,7 +292,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       inner.className = 'b';
       const c: Card = { f, box, inner, seen: 0 };
       box.dataset.id = f.id;
-      inner.appendChild(f.kind === 'image' ? Object.assign(document.createElement('img'), { className: 'pic', src: f.src, alt: f.label || '', draggable: false, decoding: 'async', loading: 'lazy' }) : card(c));
+      inner.appendChild(f.kind === 'image' ? Object.assign(document.createElement('img'), { src: f.src, alt: f.label || '', draggable: false, decoding: 'async', loading: 'lazy' }) : card(c));
       box.append(inner);
       const tag = text('div', '', box);
       tag.className = 't';
@@ -654,7 +654,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // One picture to the board at a world point, a ghost there while it goes; the board is read again as soon as it is there.
   const put = async (file: Blob, wx: number, wy: number, pin = false) => {
     const ghost = text('div', 'adding image…', world);
-    Object.assign(ghost.style, { left: `${wx - 100}px`, top: `${wy - 60}px`, width: '200px', height: '120px' });
+    Object.assign(ghost.style, { left: `${wx}px`, top: `${wy}px` });
     ghost.className = 'ghost';
     try {
       const out = await (await import(new URL('pics.js', import.meta.url).href) as typeof import('../widget/pics.ts')).send<{ frame: { id: string } }>(`?board=${encodeURIComponent(name)}${of ? `&page=${encodeURIComponent(of)}` : ''}&x=${Math.round(wx)}&y=${Math.round(wy)}`, file, 25 * 1024 * 1024, 2400);
@@ -663,7 +663,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const r = pin && c?.box.getBoundingClientRect();
       if (r) boardWidget()?.place(r.left + r.width / 2, r.top + r.height / 2);
     } catch (err) {
-      note(err instanceof Error ? err.message : 'The board could not take it.');
+      note((err as Error).message);
       return false;
     } finally {
       ghost.remove();
@@ -680,9 +680,10 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       wy += 40;
     }
   };
+  const pictures = (dt: DataTransfer | null) => [...(dt?.files || [])].filter((f) => f.type.startsWith('image/'));
   on('paste', (e: ClipboardEvent) => {
     if (typing(e, false) || entered) return; // a text box, or an open frame (its page gets it), has its own paste
-    const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith('image/')); // (files, as Finder and a screenshot tool give them)
+    const [file] = pictures(e.clipboardData);
     if (!file) return; // a text paste stays untouched
     measure();
     if (!last && !(view.w >= innerWidth - 2 && view.h >= innerHeight - 2)) return; // a half view: the pointer is off the board, the paste is the page's
@@ -693,7 +694,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   on('dragover', (e: DragEvent) => {
     if (!mine(e) || !files(e) || entered) return;
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer!.dropEffect = 'copy';
     root.classList.add('drop');
   }, true);
   on('dragleave', (e: DragEvent) => mine(e) && root.classList.remove('drop'), true);
@@ -701,7 +702,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     root.classList.remove('drop');
     if (!mine(e) || !files(e) || entered) return;
     e.preventDefault();
-    void putAll([...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith('image/')), { x: e.clientX, y: e.clientY }, e.altKey);
+    void putAll(pictures(e.dataTransfer), { x: e.clientX, y: e.clientY }, e.altKey);
   }, true);
   const pick = Object.assign(document.createElement('input'), { type: 'file', accept: 'image/*', multiple: true, hidden: true });
   pick.addEventListener('change', () => {
