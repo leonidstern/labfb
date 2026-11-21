@@ -219,6 +219,25 @@ export function startLive() {
           document.head.append(Object.assign(document.createElement('link'), { rel: 'icon', href: '/_lab/favicon.svg' }));
         });
     }
+    // What goes wrong on the page, for the agent that fixes it (the lab shows it with the page's text): an uncaught error, a
+    // file that failed to load, a rejected promise, a script the page's policy blocked. The last 8, each once, sent a
+    // second after the last one. The widget's own are not the page's. (A file that failed while the page was still loading
+    // is the lab's to say: the page's text lists the files it asked for that the lab did not have.)
+    const oops: string[] = [];
+    let oopsTimer: any = 0;
+    const tell = (t: string) => {
+      t = t.replace(/\s+/g, ' ').slice(0, 200);
+      if (oops.includes(t) || /^Script error\.?/.test(t)) return;
+      oops.push(t);
+      if (oops.length > 8) oops.shift();
+      clearTimeout(oopsTimer);
+      oopsTimer = setTimeout(() => fetch(W.script.dataset.live.replace(/live$/, 'errors'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: W.S.page, list: oops }) }).catch(() => {}), 1000);
+    };
+    if (!board) {
+      addEventListener('error', (e: any) => e.filename?.includes('/_lab/') || tell(e.message ? `${e.message} (${(e.filename || '').split('/').pop() || 'page'}:${e.lineno})` : `failed to load ${e.target?.src || e.target?.href}`), true);
+      addEventListener('unhandledrejection', (e) => tell(`unhandled rejection: ${e.reason?.message || e.reason}`));
+      addEventListener('securitypolicyviolation', (e) => tell(`blocked by the page's policy: ${e.violatedDirective} ${e.blockedURI}`));
+    }
     let stream = null;
     let beat = 0;
     // The pill is the mark, with its status as a badge on the mark's corner (Leo, 20 Nov: "lets try this", icon only; "like we had
@@ -385,6 +404,9 @@ export function startLive() {
     const ownStyles = () => new Set([W.pageStyle, W.pinCursorStyle]);
     const scriptsOf = (doc) => [...doc.querySelectorAll('script:not([data-lab])')].filter((x) => !/\/_lab\/comments\.js/.test(x.getAttribute('src') || '')).map((x) => x.getAttribute('src') || x.textContent);
     const sheetsOf = (doc) => [...doc.querySelectorAll('link[rel~="stylesheet"]:not([data-lab-swap])')].map((l) => { try { return new URL(l.getAttribute('href'), location.href).pathname; } catch { return ''; } });
+    // What the morph touched, to be outlined for a moment: the person sees what the agent's save changed.
+    const touched = new Set<Element>();
+    const hit = (n) => (n?.nodeType === 1 ? touched.add(n) : touched.add(n?.parentNode));
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
     // everything after it (an open <details> further down stays the same element, and stays open).
@@ -398,6 +420,7 @@ export function startLive() {
       const put = (n) => {
         const c = document.importNode(n, true);
         a.insertBefore(c, prev ? prev.nextSibling : olds[j] || a.firstChild);
+        hit(c);
         return c;
       };
       news.forEach((n, i) => {
@@ -425,17 +448,27 @@ export function startLive() {
       if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || idOf(o) !== idOf(n)) {
         const c = document.importNode(n, true);
         o.replaceWith(c);
+        hit(c);
         return c;
       }
       if (o.nodeType === 3 || o.nodeType === 8) {
-        if (o.data !== n.data) o.data = n.data;
+        if (o.data !== n.data) {
+          o.data = n.data;
+          hit(o);
+        }
         return o;
       }
       if (o.nodeType !== 1) return o;
       if (o.isEqualNode(n)) return o; // the same inside and out: nothing to walk (Eleventy's dev server does this)
       // An opened <details> or <dialog> stays open (you opened it; the file doesn't say so).
-      for (const { name } of Array.from(o.attributes as NamedNodeMap)) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
-      for (const { name, value } of Array.from(n.attributes as NamedNodeMap)) if (!o.hasAttribute(name) || plain(o.getAttribute(name)) !== value) o.setAttribute(name, value);
+      for (const { name } of Array.from(o.attributes as NamedNodeMap)) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) {
+        o.removeAttribute(name);
+        hit(o);
+      }
+      for (const { name, value } of Array.from(n.attributes as NamedNodeMap)) if (!o.hasAttribute(name) || plain(o.getAttribute(name)) !== value) {
+        o.setAttribute(name, value);
+        hit(o);
+      }
       // A playing video, a canvas, a field's own value, a web component's insides: left as they are. What you typed stays,
       // because only the file's text under a <textarea> and the options of a <select> follow it.
       if (o.isContentEditable || o.shadowRoot || /^(iframe|canvas|video|audio|input|noscript)$/.test(o.localName)) return o;
@@ -492,6 +525,9 @@ export function startLive() {
             if (name !== 'style' && H.getAttribute(name) !== v) H.setAttribute(name, v);
           }
           aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
+          // The elements that changed are outlined for a moment (not for someone who asked for less motion).
+          if (!matchMedia('(prefers-reduced-motion: reduce)').matches) for (const e of [...touched].slice(0, 12)) if (e?.isConnected && e !== document.body) e.animate?.([{ outline: '2px solid Highlight' }, { outline: '2px solid transparent' }], 1200);
+          touched.clear();
           if (mark?.isConnected) {
             const moved = mark.getBoundingClientRect().top - markTop;
             if (Math.abs(moved) > 1) scrollBy(0, moved);
