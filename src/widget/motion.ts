@@ -1,6 +1,9 @@
-// Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+// Part of the comment widget, built as its own file (public/_lab/motion.js, scripts/build-widget.mjs) that src/comments.js
+// loads once the page has something that moves (a video, an animation), ⌥ is held, P or S is pressed, or a comment has a
+// moment. Its styles come with it. Uses the widget's own parts through W, set once at startup.
 import { momentText } from '../../lib/moment.mjs';
 import { selectorFor } from './anchoring.ts';
+import css from './motion.css';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -403,7 +406,8 @@ export const setPause = (on) => {
   for (const el of on ? moving().filter((el) => !isStill(el)) : [...held]) setItem(el, on);
   drawMotion();
 };
-const altMotionSet = (on) => {
+// ⌥ is held (set by the part's own keys; comments.js calls it for the press that loaded it, which the part missed).
+export const altMotionSet = (on) => {
   if (altMotion === on) return;
   altMotion = on;
   drawMotion();
@@ -422,8 +426,9 @@ const redrawMotionSoon = () => motionAgain || (motionAgain = requestAnimationFra
 export function bindMotion(w: unknown) {
   W = w;
   S = W.S;
+  W.root.append(W.el('style', {}, css)); // its styles come with it, after the widget's own
   S.momentChip = momentChip;
-  S.momentFor = momentFor;
+  pointerAt = S.mouse && { ...S.mouse }; // where the pointer already is: loaded by the first ⌥ or a key, nothing has moved since
   for (const type of ['animationstart', 'transitionrun', 'play']) addEventListener(type, () => (S.slow || slowEls.size > 0) && slowAll(), true);
   addEventListener('keydown', (e) => e.key === 'Alt' && !W.coarse && altMotionSet(!e.metaKey && !e.ctrlKey && !e.shiftKey), true);
   addEventListener('keydown', (e) => altMotion && e.key !== 'Alt' && altMotionSet(false), true); // ⌥W, ⌥1…: a shortcut
