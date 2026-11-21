@@ -112,6 +112,8 @@ try {
       const root = () => p.evaluateHandle(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim')).shadowRoot);
       // A click on the page, the words typed, Enter: the comment as the lab saved it (null when none arrived).
       const pin = async (name, x, y, text) => {
+        await p.keyboard.press('Escape'); // (a second pin on a page: the first one's card is shut, or the click only shuts it)
+        await sleep(300);
         await p.mouse.click(x, y);
         await p.waitForFunction(() => [...document.querySelectorAll('*')].find((n) => n.shadowRoot?.querySelector('.scrim'))?.shadowRoot.querySelector('.float textarea'), null, { timeout: 5000 }).catch(() => {});
         await p.keyboard.insertText(text);
@@ -217,7 +219,8 @@ try {
       await ready();
       const rc = await pin(`react${n}`, ...(await centre('#t')), 'react pin');
       check(eng, 'React after a hot update: the line is the one of the fiber on screen (9), not the node\'s own stale one (6)', rc?.anchor.source === 'src/Home.jsx:9' && rc.anchor.component === 'Home', `${rc?.anchor.component} | ${rc?.anchor.source}`);
-      check(eng, 'React: the agent reads that line', /^written at: src\/Home\.jsx:9$/m.test(await agent(`react${n}`)));
+      const rline = (await agent(`react${n}`)).split('\n').find((l) => l.startsWith('written at:')) || '';
+      check(eng, 'React: the agent reads that line (the file is not in this lab, so the text says the line is as pinned and not checked)', /^written at: src\/Home\.jsx:9( \(line from when it was pinned;.*\))?$/.test(rline), rline);
       await p.goto(`${B}/next${n}`);
       await ready();
       const srv = await pin(`next${n}`, ...(await centre('#t')), 'server pin');
