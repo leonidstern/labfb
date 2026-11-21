@@ -33,14 +33,22 @@ export const pinBoard = async (id: string, make = false, anchor?: { kind?: strin
   }
   return showBoard(name);
 };
-// The element a section goes after: the pinned one, or the first of its own that stands in the page as a block (not a
-// word in a line, an item of a list, a cell, or a box in a row of them).
+// The element a section goes after: the pinned one, or the first of its own that stands in the page as a block: not a
+// word in a line, an item of a list, a cell, or a box with others beside it (a card in a row; a grid or flex box that
+// stacks its boxes is fine to go into).
+const ITEM = /^(li|dt|dd|td|th|tr|thead|tbody|tfoot|caption|summary|legend|option|figcaption)$/;
+const beside = (n: Element) => {
+  const r = n.getBoundingClientRect();
+  return [...(n.parentElement?.children || [])].some((s) => {
+    if (s === n || s === W.host) return false;
+    const q = s.getBoundingClientRect();
+    return q.width > 0 && q.top < r.bottom - 1 && q.bottom > r.top + 1;
+  });
+};
 const blockOf = (n: Element | null) => {
-  for (; n && n.parentElement && n !== document.body && n.parentElement !== document.body; n = n.parentElement) {
-    const d = getComputedStyle(n).display;
-    const p = getComputedStyle(n.parentElement);
-    const row = /grid/.test(p.display) || (/flex/.test(p.display) && !p.flexDirection.startsWith('column'));
-    if (!/^inline|contents/.test(d) && !row && !/^(li|dt|dd|td|th|tr|thead|tbody|tfoot|caption|summary|legend|option|figcaption)$/.test(n.localName)) return n;
+  for (; n && n.parentElement && n !== document.body; n = n.parentElement) {
+    if (!/^inline|contents/.test(getComputedStyle(n).display) && !ITEM.test(n.localName) && !beside(n)) return n;
+    if (n.parentElement === document.body) break;
   }
   return n === document.body ? null : n;
 };

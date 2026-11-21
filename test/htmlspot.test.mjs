@@ -36,3 +36,7 @@ test('a page with no <body> tag, and one that has the board already', () => {
   const once = withBoard(PAGE, 'x', [['main', 1]]);
   assert.equal(withBoard(once, 'x', [['main', 1], ['section', 1]]), once);
 });
+test('words that run together across tags, and entities, still match', () => {
+  const page = '<main><h2>What you get</h2><div class="grid"><div class="card"><h3>Motion that fits</h3><p>Small, calm &amp; quiet.</p></div><div class="card"><h3>Don&rsquo;t</h3></div></div></main>';
+  assert.match(withBoard(page, 'x', [['main', 1], ['div', 1]], 'Motion that fitsSmall, calm & quiet.Don’t'), /<\/div><\/div>\n<lab-board name="x"><\/lab-board><\/main>/);
+});

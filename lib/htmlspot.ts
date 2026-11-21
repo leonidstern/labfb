@@ -12,7 +12,7 @@ const BLOCK = /^(address|article|aside|blockquote|details|div|dl|fieldset|figure
 const closes = (open: string, tag: string) =>
   (open === 'p' && BLOCK.test(tag)) || (open === 'li' && tag === 'li') || (/^(dt|dd)$/.test(open) && /^(dt|dd)$/.test(tag)) ||
   (open === 'option' && tag === 'option') || (open === 'tr' && tag === 'tr') || (/^(td|th)$/.test(open) && /^(td|th|tr)$/.test(tag));
-const flat = (t: string) => t.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+const bare = (t: string) => t.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
 
 type Open = { tag: string; at: number; kinds: Map<string, number>; on: number }; // on: how much of the path it is (-1: off it)
 /** The end of the element at `path` ([tag, place among its kind from 1] from <body> down) in a page's file, and where its
@@ -24,9 +24,10 @@ export function spotIn(src: string, path: [string, number][], words = ''): { end
   const tok = /<!--[\s\S]*?-->|<![^>]*>|<\/([a-zA-Z][\w-]*)\s*>|<([a-zA-Z][\w-]*)\b(?:[^>"']|"[^"]*"|'[^']*')*?(\/?)>/g;
   const done = (o: Open, end: number) => {
     if (o.on !== path.length || !path.length) return null;
-    const text = flat(src.slice(o.at, end));
-    const w = flat(words).slice(0, 40);
-    return !w || text.includes(w) ? { end, line: src.lastIndexOf('\n', o.at) + 1 } : null;
+    // Letters and digits only: the browser's words run together across tags ("Motion that fitsSmall, calm"), and the
+    // file has entities where the browser has their characters.
+    const w = bare(words).slice(0, 30);
+    return !w || bare(src.slice(o.at, end).replace(/<[^>]*>|&[#\w]+;/g, '')).includes(w) ? { end, line: src.lastIndexOf('\n', o.at) + 1 } : null;
   };
   let bodyEnd = -1;
   for (let m: RegExpExecArray | null; (m = tok.exec(src)); ) {
