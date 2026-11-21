@@ -18,6 +18,7 @@ import { alive, setWifi } from './lib/labcall.ts';
 import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
 import { cut } from './lib/cut.mjs';
+import { sourceLines } from './lib/source-line.mjs';
 import { isNavigation } from './lib/pageload.ts';
 import { loadSettings, changedShortcuts, seedActions, savePersonal } from './lib/settings.ts';
 import { runCommand } from './lib/commands.ts';
@@ -786,7 +787,7 @@ const agentText = async (page) => {
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
   const lines = [file && `file: ${file}`, missingFor(page), errorsFor(page)].filter(Boolean);
-  const out = pinBoards(page, lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local);
+  const out = pinBoards(page, sourceLines(lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local, ROOT)); // a framework's `written at:` line is checked against its file now
   return boardText(page, file ? lineHints(out, file) : out);
 };
 // A pin's own board (made from its card, src/widget/thread.ts): board pin-<id>, about its page at #pin-<id>. What is on
