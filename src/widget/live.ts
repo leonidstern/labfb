@@ -293,8 +293,10 @@ export function startLive() {
     const swapCss = (files) => {
       // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
       const links = [...(document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])') as NodeListOf<HTMLLinkElement>)].filter((l) => new URL(l.href, location.href).origin === location.origin);
-      const named = links.filter((l) => files.includes(decodeURIComponent(new URL(l.href, location.href).pathname)));
-      for (const link of named.length ? named : links) {
+      const own = (l: HTMLLinkElement) => decodeURIComponent(new URL(l.href, location.href).pathname);
+      const named = links.filter((l) => files.includes(own(l)));
+      // A saved file no link names is pulled in by @import: every sheet is swapped then, not only the ones named.
+      for (const link of named.length && files.every((f) => named.some((l) => own(l) === f)) ? named : links) {
         const url = new URL(link.href, location.href);
         url.searchParams.set('lab-v', Date.now().toString(36));
         const next = (link.cloneNode() as HTMLLinkElement);

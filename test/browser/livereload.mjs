@@ -36,6 +36,10 @@ save('index.html', html('<script type="module" src="main.js"></script>'));
 save('main.js', 'import "./dep.js";');
 save('dep.js', 'document.documentElement.dataset.dep="v1";');
 save('plain.html', html());
+save('imp.html', '<!doctype html><meta charset="utf-8"><title>t</title><link rel="stylesheet" href="top.css"><link rel="stylesheet" href="side.css"><main id="m">imp</main>');
+save('top.css', '@import "base.css";');
+save('base.css', color(1, 2, 3));
+save('side.css', 'i{color:red}');
 save('gone.html', html('', 'v1'));
 save('Caps.html', html());
 await start();
@@ -99,6 +103,14 @@ try {
       check(eng, 'a page cut short on disk stays as it is, with its widget', await p.evaluate(() => window.kept === 1 && Boolean(document.querySelector('script[data-live]'))));
       save('plain.html', html('', 'whole'));
       check(eng, 'and shows the whole file when it is saved again', await until(async () => (await text(p)) === 'whole'), String(await text(p)));
+      await p.close();
+
+      // A stylesheet that is only @imported, saved together with another one the page links: both show (the imported one is
+      // not named by a link, so the sheets that import it are swapped too).
+      p = await open('/imp');
+      save('base.css', color(5, 6, 7));
+      save('side.css', 'i{color:blue}');
+      check(eng, 'an @imported stylesheet saved with another one shows', await until(async () => (await col(p)) === 'rgb(5, 6, 7)'), await col(p));
       await p.close();
 
       // A page opened in another letter case (a disk that ignores case: macOS, Windows).
