@@ -18,6 +18,7 @@ type MountOpts = {
   of?: string; // the page this board is about (the API's ?page=, and where back goes on the board page)
   back?: () => void; // ⇧B and Esc on an empty board: back to the page (the board page) or closing the view (a page's)
   hash?: boolean; // the camera is kept in the address's #x,y,z (the board page; a page's view keeps #board=<name>)
+  keep?: string; // the camera is kept in localStorage under this key (a page's view), for the next time it opens
   clip?: boolean; // a pin whose spot is outside the box hides (the box is less than the window)
   home?: (key: string, of: string) => void; // told once which page this board lives on (its pins are that page's) and its address
 };
@@ -126,6 +127,22 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let still: ReturnType<typeof setTimeout> | undefined;
   let movedAt = -1e9; // when the camera last moved
   let kept = false; // the person sized the view (overlay.ts keep()): its zoom stays from then on
+  // The camera a view left the board at, kept for this board on this page (opts.keep), so reopened it is where it was
+  // (Leo, 21 Nov: "closing/opening board drawer should not move zoom/position inside board"). Only once moved by hand.
+  const keepCam = () => {
+    if (!opts.keep || !moved) return;
+    try {
+      localStorage.setItem(opts.keep, JSON.stringify({ x: Math.round(cam.x), y: Math.round(cam.y), z: +cam.z.toFixed(4) }));
+    } catch {}
+  };
+  const keptCam = (): Cam | null => {
+    try {
+      const c = opts.keep && JSON.parse(localStorage.getItem(opts.keep) || 'null');
+      return c && [c.x, c.y, c.z].every(Number.isFinite) && c.z > 0 ? c : null;
+    } catch {
+      return null;
+    }
+  };
   let layered = false; // the world is its own layer (the camera is moving)
   let paintedZ = 0; // the zoom the labels were last sized for
 
@@ -201,6 +218,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     layered = false;
     world.style.willChange = '';
     wake();
+    keepCam();
     if (!opts.hash) return;
     try {
       history.replaceState(history.state, '', `#${Math.round(cam.x)},${Math.round(cam.y)},${cam.z.toFixed(3)}`);
@@ -346,7 +364,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
     measure(); // the box as it is now, for the fit
     const hash = opts.hash ? /^#(-?\d+),(-?\d+),([\d.]+)$/.exec(location.hash) : null;
+    const was = !moved && !hash ? keptCam() : null; // where it was when last closed here
     if (hash && !moved) cam = { x: +hash[1], y: +hash[2], z: +hash[3] };
+    else if (was) [cam, moved] = [was, true];
     else if (!moved) {
       // Every frame in view, as on a computer, phones too (Leo, 19 Nov: one frame at a time read as a slider, "dont like
       // this view at all"): drag pans, pinch zooms, Tab or a frame's label still fits one.
@@ -899,9 +919,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     measure();
     if (!sized || !cards.length) return void ((sized = true), go(moved || held ? cam : fitAll(boxes(), view), false));
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
-    cam = camBack || { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
-    if (home != null && !camBack) home -= (oy - py) / cam.z; // where the glide goes back to moves with the box, as the camera does
-    if (way && nudging && !camBack) [way.from, way.to] = [way.from - (oy - py) / cam.z, way.to - (oy - py) / cam.z];
+    // What is on the board stays where it is in the view, its zoom and place, as the view's edge moves (Leo, 21 Nov:
+    // "closing/opening board drawer should not move zoom/position inside board"). Only a phone's keyboard holding the
+    // board (held) keeps it where it is on the screen instead, as the view grows under it.
+    const shift = held && !camBack;
+    cam = camBack || (shift ? { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z } : cam);
+    if (home != null && shift) home -= (oy - py) / cam.z; // where the glide goes back to moves with the box, as the camera does
+    if (way && nudging && shift) [way.from, way.to] = [way.from - (oy - py) / cam.z, way.to - (oy - py) / cam.z];
     camBack = null;
     sizing = boxed = true;
     cancelAnimationFrame(drawFrame);
@@ -923,6 +947,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   });
   load().then(() => (started = true));
   const destroy = () => {
+    keepCam();
     ac.abort();
     ro.disconnect();
     cancelAnimationFrame(drawFrame);
@@ -936,10 +961,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // The box was set to a new size in one step (a view's half and full): drawn now (at the same zoom once kept, below), in the frame that has
   // the new size, not once the box has rested (the board is in its old place and size for 200 ms, then jumps to its fit).
   const resized = () => {
-    const [px, py] = [ox, oy];
     measure();
     if (!cards.length) return;
-    cam = moved || kept ? { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z } : fitAll(boxes(), view); // the same zoom, the board where it was on the screen
+    if (!moved && !kept) cam = fitAll(boxes(), view); // else the same zoom and place in the view
     go(cam, false);
     [whole, boxed] = [false, true]; // told as the box changing with the camera, as a dragged edge is (the page's pins under it hide or show)
     cancelAnimationFrame(drawFrame);

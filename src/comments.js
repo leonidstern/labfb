@@ -82,6 +82,7 @@ import { bindKeys } from './widget/keys.ts';
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
     get begin() { return begin; },
+    get sendDrawing() { return sendDrawing; },
     get addComment() { return addComment; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
@@ -546,6 +547,48 @@ import { bindKeys } from './widget/keys.ts';
     keepSpot(anchor);
     ptr.classList.add('still'); // the new pin is where the drawn pointer is: it goes at once (it faded over the pin), back with the next move
     render();
+  }
+  // A new comment the lab saved: on the page, its box closed, undo for a moment (takeBack).
+  function posted(comment, edit, said, anchor) {
+    if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
+    addComment(comment);
+    markSeen([comment]);
+    S.draft = null;
+    keepSpot(null);
+    S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
+    // Undo for 3 s (takeBack): the card is closed at once (Leo, 20 Nov: "autoclose modal if its first comment"), with
+    // no strip above the bar (Leo, 20 Nov: "no need this pill"); opening the pin meanwhile puts undo in its card
+    // (thread.ts), and Command-Z takes it back too, on a computer.
+    // A tapped action (go, fix, remove…) closes at once with no undo (Leo, 20 Nov: "if action close it right away").
+    if ((S.isAdmin || edit) && !anchor.act) {
+      const u = { id: comment.id, until: Date.now() + UNDO_MS, text: said, anchor, touched: false };
+      S.undo = u;
+      setTimeout(() => {
+        if (S.undo !== u) return;
+        S.undo = null;
+        if (u.touched || S.openId !== u.id) return;
+        S.closeFast = true;
+        S.openId = null;
+        render();
+      }, UNDO_MS);
+    }
+    S.posted = comment.id;
+    holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
+    render();
+  }
+  // A drawing goes as it is, with what it reads as, the moment it is done: no box to send it from (Leo, 21 Nov: "just
+  // draw maybe and send dont open comment to send it, just send"). Undo stays (⌘Z, or the pin's card). With no name
+  // given yet, or the lab refusing it, its box opens instead.
+  async function sendDrawing(anchor) {
+    const name = store.get('lab-name');
+    if (!name) return begin(anchor);
+    const said = inkSaid(anchor.ink.mark);
+    try {
+      const { comment, edit } = await send({ name, text: said, anchor });
+      posted(comment, edit, said, anchor);
+    } catch {
+      begin(anchor);
+    }
   }
   // Sent once the lab answers: while it can't be reached (restarting, the laptop just woke), the message waits and is
   // tried again every 2 s for up to 5 minutes, instead of failing. Only a lab that answers with an error fails it.
@@ -1227,31 +1270,7 @@ import { bindKeys } from './widget/keys.ts';
         attach: true,
         onSubmit: async (name, said, att) => {
           const { comment, edit } = await send({ name, text: said, anchor, ...att });
-          if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-          addComment(comment);
-          markSeen([comment]);
-          S.draft = null;
-          keepSpot(null);
-          S.openId = null; // once posted, the card closes and the new pin stays (click it to open)
-          // Undo for 3 s (takeBack): the card is closed at once (Leo, 20 Nov: "autoclose modal if its first comment"), with
-          // no strip above the bar (Leo, 20 Nov: "no need this pill"); opening the pin meanwhile puts undo in its card
-          // (thread.ts), and Command-Z takes it back too, on a computer.
-          // A tapped action (go, fix, remove…) closes at once with no undo (Leo, 20 Nov: "if action close it right away").
-          if ((S.isAdmin || edit) && !anchor.act) {
-            const u = { id: comment.id, until: Date.now() + UNDO_MS, text: said, anchor, touched: false };
-            S.undo = u;
-            setTimeout(() => {
-              if (S.undo !== u) return;
-              S.undo = null;
-              if (u.touched || S.openId !== u.id) return;
-              S.closeFast = true;
-              S.openId = null;
-              render();
-            }, UNDO_MS);
-          }
-          S.posted = comment.id;
-          holdKeyboard(); // the keyboard waits until the card has gone (sheets.ts)
-          render();
+          posted(comment, edit, said, anchor);
         },
       });
       float.append(el('div', { class: 'handle' }));
