@@ -14,7 +14,7 @@ export const showBoard = (name: string, of = '', push = true) =>
   W.part('boardview').then((m) => (W.host.setAttribute('data-board', ''), m.show(name, { page: S.page, of, push, onClose: () => {
     W.host.removeAttribute('data-board');
     // A pin's board closed: its +board pin goes to the agent now (the lab held it, local.mjs filling).
-    if (/^pin-/.test(name)) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
+    if (name.startsWith('pin-')) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
     sections(name);
     const open = S.comments.find((c) => c.id === S.openId);
     if (open?.anchor?.kind === 'board') S.openId = null;

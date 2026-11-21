@@ -137,8 +137,10 @@ export function show(name: string, o: Opts) {
       frame ||= requestAnimationFrame(() => {
         frame = 0;
         paintSize();
-        if (below) view.style.setProperty('--bv-t', '0ms'), view.style.setProperty('--bv-y', `${below}px`);
-        else ['--bv-t', '--bv-y'].forEach((k) => view.style.removeProperty(k));
+        for (const [k, v] of [['--bv-t', '0ms'], ['--bv-y', `${below}px`]]) {
+          if (below) view.style.setProperty(k, v);
+          else view.style.removeProperty(k);
+        }
       });
     };
     const end = (t: number, done: boolean) => {
