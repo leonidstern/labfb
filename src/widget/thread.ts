@@ -250,8 +250,8 @@ export function threadCard(c, fresh = new Set(), focus = false) {
   const offerOn = (mine) => {
     const all = [c, ...W.repliesOf(c.id)];
     const ans = all.slice(all.indexOf(mine) + 1).find((x) => x.session);
-    // On this computer only: the lab keeps a rule from nowhere else, so a guest would get a button that says no.
-    if (!W.S.isAdmin || !ans?.suggest || ans.suggest.state) return null;
+    // On this computer only: the lab keeps a rule from nowhere else, so another device would get a button that says no.
+    if (!W.S.isAdmin || !W.S.mac || !ans?.suggest || ans.suggest.state) return null;
     const b = W.el('button', { class: 'btn offer', type: 'button', title: ans.suggest.text });
     // The words where the time is, the star where the tick is, each in their size and colour (Leo, 17 Nov).
     b.append(W.el('span', { class: 'tm' }, 'rule?'));
