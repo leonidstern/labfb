@@ -960,6 +960,18 @@ const forGuests = (c) => {
   if (rest.session) rest.session = { name: rest.session.name, agent: rest.session.agent, kind: rest.session.kind };
   return rest;
 };
+// The agent's text as another device reads it (a guest on the wifi, or the page's own address): no path of this computer
+// and no file names of the project (the page's file, where a comment's element sits in it, where a component is written
+// or used, a board's folder), the same as the comments' JSON, the labs list and the pages list keep from guests.
+const forGuestText = (t) =>
+  t
+    .replaceAll(`, run in ${ROOT}`, '')
+    .replaceAll(`(run in ${ROOT})`, '')
+    .replaceAll(ROOT, '')
+    .split('\n')
+    .filter((l) => !/^\s*(file|in file|written at|component used at|folder|Missing files):/.test(l))
+    .join('\n')
+    .replace(/ \(file [^)\n]*\)/g, '');
 function commentChangesSince(page, since) {
   const first = changeLog.find((e) => e.page === null)?.rev;
   // The oldest rev in the log may have lost some entries to the trim: only a page that already has it gets a delta.
@@ -2733,7 +2745,8 @@ const handler = async (req, res) => {
     }
     if (pathname.startsWith('/_lab/agent/')) {
       res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
-      return res.end(await agentText(pathname.slice('/_lab/agent'.length)));
+      const said = await agentText(pathname.slice('/_lab/agent'.length));
+      return res.end(isLoopback(req) || isAgent(req) ? said : forGuestText(said));
     }
     // Read marks, shared by name: GET ?name=&page= gives the ids read there; POST { name, page, ids } adds to them.
     if (pathname === '/_lab/api/changes' && req.method === 'GET') {
@@ -2862,6 +2875,7 @@ const handler = async (req, res) => {
           body = JSON.stringify(data);
         } catch {}
       }
+      if (req.method === 'GET' && out.ok && !isLoopback(req) && !agent && url.searchParams.get('format') === 'text') body = forGuestText(text);
       if (!listing || !out.ok) return sendBody(req, res, out.status, head, body);
       const packed = packBody(req, head, body);
       keepList(listPage, listRev, kind, { status: out.status, ...packed });
