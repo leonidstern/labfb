@@ -870,6 +870,15 @@ const pageChanged = (p) => {
   pageRev.set(p, (pageRev.get(p) || 0) + 1);
   dropList(p);
   unsaved.add(p);
+  noteHome(p);
+};
+// A page's file is noted when it first has comments, not only when the file list is built: a page commented later
+// is followed by its comments file (file and fid, written with it) when the file is renamed, running or stopped.
+const noteHome = (p) => {
+  if (PROXY || homes.has(p) || p.startsWith('/_board/') || !db.get(`lab:comments:${p}`)?.size) return;
+  const rel = fileFor(p);
+  const fid = rel && fidOf(rel);
+  if (fid) homes.set(p, [rel, fid]);
 };
 let writing = null;
 let again = false;
