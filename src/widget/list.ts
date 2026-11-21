@@ -33,6 +33,20 @@ export const goTo = (c, keys = false) => {
   scrollPageTo(top); // with room below the page's end on phones, for a pin near it
 };
 
+// Turning the phone (or resizing the window) with a thread's sheet open: the page has reflowed under it, and the pin may
+// now be off screen or under the sheet. If so it is brought into the middle of what the sheet leaves free, as goTo does;
+// the page only scrolls, so the words in the reply box and the caret stay.
+export function revealOpen() {
+  const card: HTMLElement | null = W.S.openCard;
+  const c = W.S.openId && !W.S.draft && W.threads().find((t) => t.id === W.S.openId);
+  if (!W.coarse || !c || !card?.isConnected || (c.anchor || {}).kind === 'board') return;
+  const pinTop = W.position(c.anchor || {}).top;
+  const at = pinTop - scrollY;
+  const sheetTop = innerHeight - card.offsetHeight - 8;
+  if (at >= 56 && at + 28 <= sheetTop - 16) return;
+  scrollPageTo(pinTop - Math.max(40, (innerHeight - card.offsetHeight) / 2));
+}
+
 export function drawList(places?: Map<string, { moved?: boolean }>) {
   const all = W.threads();
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work

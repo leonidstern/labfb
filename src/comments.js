@@ -29,7 +29,7 @@ import { numberOf as pinNumber } from '../lib/schema.mjs';
 import { flushPins, heldPin, holdPin, letPin, newPass, readPins } from './widget/pinhold.ts';
 import { bindMessages, foldRow, foldStatus, isStatus, stampOf } from './widget/messages.ts';
 import { backFromReveal, bindSheets, backCloses, fromTap, holdKeyboard, leave, letGo, revealDraft, slideAway, startSheets, swipeDown } from './widget/sheets.ts';
-import { bindList, drawList, goTo, lineOf, lineUp, ord, stepMoved, stepNew, workState } from './widget/list.ts';
+import { bindList, drawList, goTo, lineOf, lineUp, ord, revealOpen, stepMoved, stepNew, workState } from './widget/list.ts';
 import { bindChat, drawChat, stamped } from './widget/chat.ts';
 import { bindThread, flushPick, grab, openAsk, moveTicked, pickByKey, pickTicked, placeBeside, placeCard, threadCard, tieToPin } from './widget/thread.ts';
 import { isTrying, pauseTry, placeAsk, relight } from './widget/trial.ts';
@@ -1266,7 +1266,7 @@ import { bindKeys } from './widget/keys.ts';
   // or a pick gives focus back to the button.
   // On a computer the menu is a popover the ⋯ button opens: the browser closes it on a press elsewhere or Esc, gives
   // focus back, and shows it above the page's own dialogs. hidden still says whether it is open.
-  const popMenu = !coarse; // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer)
+  const popMenu = !coarse && CSS.supports('overlay', 'auto'); // phones: the menu stays in the bar (a pinch zoom scales the bar, not the top layer); Safari has no `overlay`, so a popover would close in one frame: it stays in the bar too, and fades (goOut)
   if (popMenu) {
     moreMenu.popover = 'auto';
     /** @type {HTMLButtonElement} */ (moreBtn).popoverTargetElement = moreMenu;
@@ -1880,6 +1880,7 @@ import { bindKeys } from './widget/keys.ts';
     });
   };
   addEventListener('resize', reflow);
+  addEventListener('resize', () => requestAnimationFrame(() => requestAnimationFrame(revealOpen))); // a turned phone: the open thread's pin stays in sight, above its sheet
   // A question's card in the margin (thread.ts) that no longer fits a narrower window goes back where cards go.
   addEventListener('resize', () => {
     const card = layer.querySelector('.card.margin');

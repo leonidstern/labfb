@@ -1,0 +1,109 @@
+// Two Safari / phone things: the ⋯ menu fades out when it closes (WebKit has no `overlay` property, so the popover's
+// CSS exit is skipped there), and turning the phone with a comment card open keeps its pin and card on screen.
+// Not part of `npm test`; CI runs it in the `browser` job.
+// Run: node test/browser/menuexit.mjs (needs playwright; NODE_PATH can point at a node_modules that has it).
+import fs from 'node:fs';
+import path from 'node:path';
+import { claimPort } from './port.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+
+const pw = playwright({ ciFails: true });
+
+const DIR = tmp('labit-menuexit-');
+const PORT = claimPort(8520, 30);
+const B = `http://localhost:${PORT}`;
+const words = 'The quick brown fox jumps over the lazy dog while the committee reviews the quarterly figures. ';
+const paras = Array.from({ length: 60 }, (_, i) => `<p id="p${i}">Paragraph ${i}. ${words.repeat(2)}</p>`).join('');
+fs.writeFileSync(path.join(DIR, 'index.html'), `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>m</title><style>body{margin:0;font:17px/1.6 Georgia,serif}main{max-width:640px;margin:0 auto;padding:20px 16px 400px}</style><main><h1>Menu</h1>${paras}</main><p id="low" style="position:absolute;top:1400px;left:60px;margin:0;width:200px">Low words</p><div id="cover" style="position:fixed;right:0;bottom:50px;width:260px;height:300px;z-index:2147483647;background:#fc0"></div><dialog id="dlg" style="top:auto;bottom:0;right:0;left:auto"><p>A page dialog</p></dialog>`);
+fs.writeFileSync(path.join(DIR, 'labit.json'), JSON.stringify({ port: PORT }));
+const server = startLab(DIR, labEnv());
+await labUp(B);
+await fetch(B + '/_lab/api/comments', { method: 'POST', headers: { 'content-type': 'application/json', origin: B }, body: JSON.stringify({ page: '/index', name: 'Sam', text: 'a thread low on the page', anchor: { selector: '#p30', x: 0.5, y: 0.5, docX: 300, docY: 3300, width: 600 } }) });
+
+const ROOT = '[...document.querySelectorAll("*")].find((n) => n.shadowRoot?.querySelector(".scrim")).shadowRoot';
+try {
+  for (const eng of engines()) {
+    const browser = await pw[eng].launch();
+    try {
+      const mk = async (opts) => {
+        const ctx = await browser.newContext(opts);
+        await ctx.addInitScript(() => {
+          localStorage.setItem('lab-name', 'leo');
+          localStorage.setItem('lab-on', '1');
+        });
+        const p = await ctx.newPage();
+        await p.goto(B + '/');
+        await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('button.pin')), null, { timeout: 8000 });
+        await sleep(900);
+        return [ctx, p];
+      };
+      const sh = (p, expr) => p.evaluate(`(() => { const r = ${ROOT}; return ${expr}; })()`);
+
+      // E. The ⋯ menu after Esc and after the ⋯ button: one sample per frame from the key / click on.
+      {
+        const [ctx, p] = await mk({ viewport: { width: 1200, height: 800 } });
+        await sh(p, `(window.__sample = (ev, target) => { window.__fr = []; const go = () => { const m = r.querySelector('.more-menu'); const cs = getComputedStyle(m); window.__fr.push(cs.display === 'none' ? null : +(+cs.opacity).toFixed(2)); if (window.__fr.length < 30) requestAnimationFrame(go); }; addEventListener(ev, () => requestAnimationFrame(go), { capture: true, once: true }); })`);
+        const frames = async (how) => {
+          await p.evaluate(`window.__sample(${JSON.stringify(how === 'esc' ? 'keydown' : 'pointerdown')})`);
+          if (how === 'esc') await p.keyboard.press('Escape');
+          else {
+            const b = await sh(p, `(() => { const q = r.querySelector('.more').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; })()`);
+            await p.mouse.click(b[0], b[1]);
+          }
+          await sleep(700);
+          return p.evaluate('window.__fr');
+        };
+        const open = async () => {
+          const b = await sh(p, `(() => { const q = r.querySelector('.more').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; })()`);
+          await p.mouse.click(b[0], b[1]);
+          await sleep(700);
+        };
+        for (const how of ['esc', 'button']) {
+          await open();
+          const fr = await frames(how);
+          const shown = fr.filter((o) => o !== null);
+          console.log(`     ${eng} ${how}: ${fr.map((o) => (o === null ? '-' : o)).join(' ')}`);
+          check(eng, `the ⋯ menu fades out after ${how === 'esc' ? 'Esc' : 'the ⋯ button'}`, shown.length >= 3 && shown[1] < 1 && fr[fr.length - 1] === null, `${shown.length} frames shown, second frame opacity ${shown[1]}`);
+          await sleep(200);
+        }
+        // Over the page's own top-layer dialog (non-modal) and a fixed element at the highest z-index: is the menu's first item what a click would hit?
+        await p.evaluate('document.getElementById("dlg").show()');
+        const b = await sh(p, `(() => { const q = r.querySelector('.more').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; })()`);
+        await p.mouse.click(b[0], b[1]);
+        await sleep(500);
+        const hit = await sh(p, `(() => { const m = r.querySelector('.more-menu'); const q = m.querySelector('button').getBoundingClientRect(); const t = document.elementFromPoint(q.x + 5, q.y + 5); return { open: !m.hidden, top: t?.localName + '#' + (t?.id || '') }; })()`);
+        console.log(`     ${eng} over a page dialog and a top z-index element: ${JSON.stringify(hit)}`);
+        await ctx.close();
+      }
+
+      // H. Turning the phone with a card open: the pin and its card stay on screen.
+      {
+        const [ctx, p] = await mk({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+        await p.evaluate('document.getElementById("p30").scrollIntoView({ block: "center" })');
+        await sleep(500);
+        const pin = await sh(p, `(() => { const q = r.querySelector('button.pin').getBoundingClientRect(); return [q.x + q.width / 2, q.y + q.height / 2]; })()`);
+        await p.touchscreen.tap(pin[0], pin[1]);
+        await sleep(1000);
+        const look = () => sh(p, `(() => { const q = r.querySelector('button.pin')?.getBoundingClientRect(); const c = r.querySelector('.card:not(.out), .float:not(.out)')?.getBoundingClientRect(); return { sy: Math.round(scrollY), vh: innerHeight, pin: q && [Math.round(q.top), Math.round(q.bottom)], card: c && [Math.round(c.top), Math.round(c.bottom)] }; })()`);
+        const before = await look();
+        await sh(p, `(window.__rec = []) && 0`);
+        await p.evaluate(`(() => { window.__rec = []; const g = () => { const R = ${ROOT}; const q = R.querySelector('button.pin')?.getBoundingClientRect(); const c = R.querySelector('.card:not(.out), .float:not(.out)')?.getBoundingClientRect(); window.__rec.push([Math.round(scrollY), q && Math.round(q.top), c && Math.round(c.top), c && Math.round(c.bottom)]); if (window.__rec.length < 90) requestAnimationFrame(g); }; requestAnimationFrame(g); })()`);
+        await p.setViewportSize({ width: 844, height: 390 });
+        await sleep(2000);
+        const after = await look();
+        const rec = await p.evaluate('window.__rec');
+        console.log(`     ${eng} rotate before ${JSON.stringify(before)}\n     ${eng} rotate after  ${JSON.stringify(after)}`);
+        console.log(`     ${eng} frames (scrollY, pin top, card top, card bottom): ${rec.filter((_, i) => i % 6 === 0).map((f) => f.join('/')).join('  ')}`);
+        check(eng, 'a card was open before the turn', Boolean(before.card && before.pin), JSON.stringify(before));
+        check(eng, 'after the turn the pin is inside the window', Boolean(after.pin) && after.pin[0] >= 0 && after.pin[1] <= after.vh, JSON.stringify(after));
+        check(eng, 'after the turn the card is inside the window', Boolean(after.card) && after.card[0] >= 0 && after.card[1] <= after.vh, JSON.stringify(after));
+        await ctx.close();
+      }
+    } finally {
+      await browser.close();
+    }
+  }
+} finally {
+  server.kill();
+}
+finish();
