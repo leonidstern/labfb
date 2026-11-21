@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { apiOn, BODY_MAX, callApi, encodingFor, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
+import { apiOn, BODY_MAX, callApi, decoderFor, encodingFor, onLan, packBody, sendBody, sendFile, sendPacked } from './lib/dev.ts';
 import { parseArgs, WRITE_SHORT } from './lib/args.ts';
 import { addRule, dropRule, rulesText } from './lib/replies.ts';
 import { AGENTS, agentKind } from './lib/agents.ts';
@@ -17,13 +17,11 @@ import { PARKED, REGISTRY, askPages, keyFor, parkedLabs, runningLabs } from './l
 import { alive, setWifi } from './lib/labcall.ts';
 import { DO_IT, PROGRESS_MS, UNMATCHED, numberOf, slim, upgrade, VERSION as SCHEMA } from './lib/schema.mjs';
 import { sameKey } from './lib/comments-api.mjs';
-import { loadSettings, changedShortcuts, seedActions, savePersonal, savePersonalFlag } from './lib/settings.ts';
-import { FLAGS, flagsOn } from './lib/flags.ts';
+import { loadSettings, changedShortcuts, seedActions, savePersonal } from './lib/settings.ts';
 import { runCommand } from './lib/commands.ts';
 import { findDevServer as find, tilde, othersNote } from './lib/devserver.ts';
 import * as B from './lib/board.ts';
 import * as act from './lib/boardact.ts';
-import { listFrom } from './lib/actions.ts';
 import { proxy as makeProxy } from './lib/proxy.ts';
 import { newer, fetchNotes } from './lib/update.ts';
 
@@ -185,7 +183,6 @@ if (pos[0] === 'settings') {
   const changed = changedShortcuts(SET.shortcuts);
   const show = (k, v) =>
     k === 'shortcuts' ? (Object.keys(changed).length ? Object.entries(changed).map(([a, key]) => `${a} ${key}`).join(', ') : 'the defaults')
-      : k === 'flags' ? (flagsOn(v).map((f) => `${f} (${SETTINGS.flagFrom[f] === 'project' ? 'labit.json' : 'yours'})`).join(', ') || 'none on')
       : k === 'actions' ? v.map((a) => a.name).join(' ') || '(none)'
       : String(v === '' ? '(none)' : v);
   const home = (f) => f.replace(os.homedir(), '~');
@@ -193,7 +190,7 @@ if (pos[0] === 'settings') {
   console.log(`Project: ${SETTINGS.files.project ? home(SETTINGS.files.project) : `no labit.json in ${home(HERE)} or above`}\nYours:   ${home(SETTINGS.files.personal)}${fs.existsSync(SETTINGS.files.personal) ? '' : ' (not made yet)'}\n`);
   const w = Math.max(...Object.keys(SET).map((k) => k.length));
   for (const [k, v] of Object.entries(SET)) console.log(`${k.padEnd(w)}  ${show(k, v).padEnd(20)}  ${src(SETTINGS.from[k])}`);
-  console.log(`\nYour actions, in order (edit them in your settings.json):`);
+  console.log(`\nYour actions, in order (set them in labit.json or your settings.json):`);
   for (const a of SET.actions) console.log(`  ${a.name.padEnd(7)}  ${a.prompt}`);
   console.log(`\nA flag or variable wins over labit.json, which wins over your file. See docs/settings.md.`);
   process.exit(SETTINGS.problems.length ? 1 : 0);
@@ -720,6 +717,25 @@ const sourceFor = (page) => {
 };
 
 let origin = '';
+// Files a page asked for that this lab did not have (a picture on a wrong path is the usual cause), the last 10, each with
+// the page that asked: "the picture is missing" reaches the agent with the file's name, not for it to hunt for.
+const missed = new Map(); // page + path -> { page, path }
+const noteMissing = (req, what) => {
+  try {
+    const from = new URL(String(req.headers.referer));
+    if (from.host !== req.headers.host || what.startsWith('/_lab/')) return;
+    const at = decodeURIComponent(from.pathname);
+    const page = keyFor(at.slice(1) + (at.endsWith('/') ? 'index' : ''));
+    missed.delete(`${page} ${what}`);
+    missed.set(`${page} ${what}`, { page, path: what });
+    if (missed.size > 10) missed.delete(missed.keys().next().value);
+  } catch {} // no referrer, or one that is not an address
+};
+// Said in the page's text; one that has appeared since (the file was added, or the link fixed) is not.
+const missingFor = (page) => {
+  const list = [...missed.values()].filter((m) => m.page === page && !fs.existsSync(path.join(ROOT, m.path)));
+  return list.length ? `Missing files: ${list.map((m) => `${m.path} (on ${m.page})`).join(', ')}` : '';
+};
 const agentText = async (page) => {
   // Asked with the lab's own address, so the links the text gives are right as written. (It used to be asked as
   // http://localhost and every such string replaced afterwards, a comment's own "http://localhost:3000" included.)
@@ -728,7 +744,7 @@ const agentText = async (page) => {
   // Paths inside the project as the project sees them (src/pages/Orders.jsx), not the whole path on this computer.
   const local = text.replaceAll(`${ROOT}/`, '').replace(/^to answer: POST .*$/m, `to answer: ${CMD} reply <id> "what you did" [--resolve], run in ${ROOT}`).replace(/^settle: pin /gm, `settle: ${CMD} pin `);
   const file = fileFor(page);
-  const lines = [file && `file: ${file}`].filter(Boolean);
+  const lines = [file && `file: ${file}`, missingFor(page)].filter(Boolean);
   const out = lines.length ? local.replace(/^(page: .*)$/m, `$1\n${lines.join('\n')}`) : local;
   return boardText(page, file ? lineHints(out, file) : out);
 };
@@ -989,12 +1005,13 @@ const sameOrigin = (req) => {
 };
 const isLoopback = (req) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
 // --wifi listens on every address, and a Mac on IPv6 has public ones (the Host check is easy to fake, so it isn't a lock):
-// only this computer and devices on the local network get in, whatever the router's firewall lets through.
+// only this computer and devices on the local network get in, whatever the router's firewall lets through. (The local
+// network is the private ranges, and what this computer's own interfaces are on: `labit invite` prints those addresses.)
 const nearby = (req) => {
   const a = String(req.socket.remoteAddress || '').toLowerCase().replace(/^::ffff:/, '');
   if (a === '::1' || a.startsWith('127.')) return true;
   if (!WIFI) return false;
-  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a));
+  return /^(10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a) || /^(fe[89ab]|f[cd])[0-9a-f]*:/.test(a) || lanPrefixes().has(prefix64(a)) || onLan(a);
 };
 // A phone on the same wifi may come from its public IPv6 address: it shares this Mac's /64 network prefix.
 const prefix64 = (a) => {
@@ -1246,7 +1263,7 @@ stateParts.handed = () => {
 const saveHanded = saveState;
 if (Object.keys(handoff).length) saveHanded();
 for (const [id, mark] of Object.entries(isObj(labState.handed) ? labState.handed : {})) if (Array.isArray(mark)) handoff[id] = mark;
-const state = (local) => JSON.stringify({ ...version, labit: VERSION, flags: flagsOn(SET.flags), reads: readsRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
+const state = (local) => JSON.stringify({ ...version, labit: VERSION, reads: readsRev, sections: sectionsRev, mode, heard: heard(), silent: silentNow(), session: session && (local ? session : { name: session.name, agent: session.agent, model: session.model }) });
 const broadcast = () => {
   for (const c of clients) c.res.write(`data: ${state(c.local)}\n\n`);
 };
@@ -1261,7 +1278,10 @@ const hotSaved = new Map(); // served path -> kind
 // Files that can't be swapped in place. They're sent with the update, and each page reloads only if it uses one of
 // them: a README, another page's script or the project's server code leaves your page where it is.
 const otherSaved = new Set(); // served paths
-const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || s === 'node_modules');
+// Folders the watcher leaves alone (never the server: a file in one is served as any other): dot folders and the ones
+// tools fill with thousands of files nobody edits by hand, which would use up the computer's file watchers.
+const UNWATCHED = new Set(['node_modules', 'venv', '__pycache__', 'bower_components']);
+const hidden = (file) => file.split(path.sep).some((s) => s.startsWith('.') || UNWATCHED.has(s));
 if (!PROXY) watchTree(ROOT, (event, file) => {
   if (!file || hidden(file)) return;
   // Only a page or a folder can change which page is which file. (macOS reports most saves as "rename", so the
@@ -1292,7 +1312,7 @@ if (!PROXY) watchTree(ROOT, (event, file) => {
     // While the agent works it often saves several files for one fix: wait for 400 ms of quiet so the page updates
     // once. A person saving by hand gets it after 80 ms.
   }, mode === 'working' ? 400 : 80);
-}, hidden);
+}, hidden, (n) => console.log(`[lab] ${n} folder${n === 1 ? '' : 's'} could not be watched (the computer is out of file watchers), so saves there will not reload pages. On Linux, raise fs.inotify.max_user_watches.`));
 
 // The widget's own files: a changed script reloads open pages (they need the new one); lab.css is swapped in place.
 let widgetTimer;
@@ -1499,7 +1519,7 @@ const boardTold = new Map(); // session + board -> the frames text it was given 
 async function threadsText(page, threads, who = '') {
   const text = await agentText(page);
   const [frames, rest] = text.startsWith('# Board') ? text.split(/\n(?=# Comments)/) : ['', text];
-  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked):/.test(l)).join('\n');
+  let head = rest.split('\n## ')[0].split('\n').filter((l) => /^(page|file|frame|picked|Missing files):/.test(l)).join('\n');
   if (frames && boardTold.get(`${who}\n${page}`) !== frames) {
     boardTold.set(`${who}\n${page}`, frames);
     head = `${frames.trim()}\n${head}`;
@@ -1818,17 +1838,8 @@ function announce(page, c) {
 // Shortcuts the project or you changed (labit.json / settings.json `shortcuts`): the widget's keys.
 const KEYS_ATTR = Object.keys(changedShortcuts(SET.shortcuts)).length ? ` data-keys='${JSON.stringify(changedShortcuts(SET.shortcuts))}'` : '';
 // Your list of actions (settings.json `actions`, lib/actions.ts): the chips of the comment box. Names
-// and prompts are yours, so the attribute is escaped as the flags' is.
-// Read per page: the "…" menu can change the list while the lab runs (PUT /_lab/api/actions).
+// and prompts are yours, so the attribute is escaped (the tag can't be talked out of being a tag).
 const actionsAttr = () => ` data-actions='${JSON.stringify(SET.actions).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
-// What is being tried in this lab: every flag, its state, and whether the project's labit.json sets it (then the ⋯
-// menu's Experiments list shows it read-only: the project wins over your own settings).
-// The attribute is wrapped in single quotes, and a flag's name is written by us for people to read -- an apostrophe
-// in one of them would end the attribute halfway. & and < go too, so the tag can't be talked out of being a tag.
-const flagsAttr = () => {
-  const json = JSON.stringify(Object.fromEntries(Object.entries(FLAGS).map(([k, f]) => [k, { name: f.name, on: SET.flags[k] === true, ...(SETTINGS.flagFrom[k] === 'project' ? { project: true } : {}) }])));
-  return ` data-flags='${json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/'/g, '&#39;')}'`;
-};
 // Which labit this lab runs, for the foot of the ⋯ menu: the version, and what a local edge build merged on top
 // of main (EDGE, from a script that builds one, e.g. "main ab303fa").
 const LABIT_ATTR = ` data-labit="${`labit ${VERSION}${EDGE ? ` · edge: ${EDGE}` : ''}`.replace(/[<>&'"]/g, '')}"`;
@@ -1841,7 +1852,7 @@ const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
   return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
-  `${KEYS_ATTR}${actionsAttr()}${flagsAttr()}${LABIT_ATTR}${updateAttr()}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
+  `${KEYS_ATTR}${actionsAttr()}${LABIT_ATTR}${updateAttr()}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;
 };
 // Before the last </body>, unless that one sits inside a script (a template string); then at the end.
@@ -1860,7 +1871,7 @@ const inject = (html, tag) => {
 const LAB_ICON = '<link rel="icon" href="/_lab/favicon.svg">';
 const withIcon = (html) => {
   if (/<link\b[^>]*\brel=["']?(?:[^"'>]*\s)?icon[\s"'>/]/i.test(html) || fs.existsSync(path.join(ROOT, 'favicon.ico'))) return html;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + LAB_ICON + html.slice(at.index + at[0].length) : LAB_ICON + html;
 };
 // The section bar keeps its own room at the top of the page, so it never covers the page's first lines.
@@ -1878,7 +1889,7 @@ const withRoom = (html) => {
   if (said === 'off' || !/<link\b[^>]*\bhref=["']?\/_lab\/lab\.css\b/i.test(html)) return html;
   const n = (t) => (body.replace(/<(nav|aside|dialog|footer)\b[\s\S]*?<\/\1>/gi, '').match(new RegExp(`<${t}[\\s>]`, 'gi')) || []).length;
   if (n('h2') < 3 && n('h3') < 3 && n('h1') < 3) return html;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + ROOM + html.slice(at.index + at[0].length) : ROOM + html;
 };
 // A dev server reloads the page as soon as a file changes — under you, mid-sentence. The widget cannot stop it from
@@ -1897,10 +1908,10 @@ return ws;}});})()</script>`;
 // Right after <head> (or at the top): it has to run before the dev server's own client script.
 const holdFirst = (html) => {
   if (!PROXY || /__lab=\{writing/.test(html)) return html; // only a dev server reloads pages; never twice
-  const head = /<head[^>]*>/i.exec(html);
+  const head = /<head(\s[^>]*)?>/i.exec(html);
   if (head) return html.slice(0, head.index + head[0].length) + HOLD + html.slice(head.index + head[0].length);
   const doc = /<!doctype[^>]*>/i.exec(html);
-  return doc ? html.slice(0, doc[0].length) + HOLD + html.slice(doc[0].length) : HOLD + html;
+  return doc ? html.slice(0, doc.index + doc[0].length) + HOLD + html.slice(doc.index + doc[0].length) : HOLD + html;
 };
 // Every page under a folder, as paths relative to it: the shallowest index pages first, then by path.
 const pagesUnder = (top) => {
@@ -1927,9 +1938,14 @@ const pagesUnder = (top) => {
   });
 };
 const urlOf = (rel) => '/' + rel.split(path.sep).map(encodeURIComponent).join('/').replace(/(^|\/)index\.html?$/i, '$1');
+// A page file as text, in the charset it names (see decoderFor).
+const htmlOf = (file) => {
+  const bytes = fs.readFileSync(file);
+  return decoderFor(bytes).decode(bytes);
+};
 const titleOf = (file) => {
   try {
-    const head = fs.readFileSync(file, 'utf8').slice(0, 4000);
+    const head = htmlOf(file).slice(0, 4000);
     return head.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1].trim() || '';
   } catch {
     return '';
@@ -1943,6 +1959,7 @@ const labPage = (title, body) =>
   `<body class=lab><main><a class="lab-brand" href="/">${markSvg(20)}labit</a>${body}</main></body>`;
 const esc = (s) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 const notFound = (req, res, what) => {
+  noteMissing(req, what);
   if (!/text\/html/.test(req.headers.accept || '')) return plain(res, 404, 'not found');
   res.writeHead(404, { 'content-type': 'text/html; charset=utf-8' });
   return res.end(labPage('labit · not found', `<header><h1>Not found</h1><p class="lede">There's no page at <code>${esc(what)}</code> in this lab.</p></header><p><a class="lab-button" href="/" style="text-decoration:none;display:inline-block">All pages</a></p>`));
@@ -2265,42 +2282,6 @@ const handler = async (req, res) => {
       if (body.page) q.set('to', landing('/' + String(body.page).replace(/^\/+/, '')));
       const tail = q.size ? `?${q}` : '';
       return answer(res, { name: who, links: hosts.map((h) => `http://${h}:${PORT}/_lab/j/${code}${tail}`) });
-    }
-    // The ⋯ menu's Experiments list: a flag turned on or off by the person at this computer (with the lab's key), saved
-    // in their own settings file so it holds in every lab they run. A flag the project's labit.json sets is the
-    // project's: refused here. Every open page hears the new state on the live stream and starts or stops the feature.
-    if (pathname === '/_lab/flags' && req.method === 'POST') {
-      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const { flag, on } = await sent(req);
-      if (typeof flag !== 'string' || !Object.hasOwn(FLAGS, flag) || typeof on !== 'boolean') return res.writeHead(400).end('flag: one of ' + Object.keys(FLAGS).join(', ') + '; on: true or false');
-      if (SETTINGS.flagFrom[flag] === 'project') return res.writeHead(409).end(`${flag} is set by the project's labit.json`);
-      let file;
-      try {
-        file = savePersonalFlag(flag, on);
-      } catch (e) {
-        return res.writeHead(500).end(`could not save it: ${e.message}`);
-      }
-      SET.flags = { ...SET.flags, [flag]: on };
-      if (on) SETTINGS.flagFrom[flag] = 'personal';
-      else delete SETTINGS.flagFrom[flag];
-      console.log(`[lab] experiment ${flag}: ${on ? 'on' : 'off'} (${file.replace(os.homedir(), '~')})`);
-      broadcast();
-      return answer(res, { flags: flagsOn(SET.flags) });
-    }
-    // Your actions (lib/actions.ts) from a comment box's "…" menu: the whole list, in its order, saved in your own
-    // settings. This computer with the lab's key only, as the Experiments switch: never a guest, never the agent's key.
-    if (pathname === '/_lab/api/actions' && req.method === 'PUT') {
-      if (!isLoopback(req) || !keyOk(req)) return res.writeHead(403).end('forbidden');
-      const out = listFrom(await sent(req));
-      if ('why' in out) return res.writeHead(400).end(out.why);
-      try {
-        savePersonal('actions', out.actions);
-      } catch (e) {
-        return res.writeHead(500).end(`could not save it: ${e.message}`);
-      }
-      SET.actions = out.actions;
-      console.log(`[lab] your actions: ${out.actions.map((a) => a.name).join(' ') || '(none)'} (${SETTINGS.files.personal.replace(os.homedir(), '~')})`);
-      return answer(res, { actions: out.actions });
     }
     // The widget says who you are now, so the next lab on this computer starts out knowing. From this computer only:
     // a guest names themself in their own browser, and never renames this computer.
@@ -2756,7 +2737,7 @@ const handler = async (req, res) => {
     }
     if (!lab && /\.html?$/i.test(file)) {
       return sendBody(req, res, 200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' },
-        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(fs.readFileSync(file, 'utf8')), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
+        inject((inFrame(req) ? withIcon : (h) => withRoom(withIcon(h)))(htmlOf(file)), widget(keyFor(path.relative(ROOT, file)), isLoopback(req), nameFor(req), inFrame(req))));
     }
     sendFile(req, res, file);
   } catch (e) {

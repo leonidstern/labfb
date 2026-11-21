@@ -22,7 +22,7 @@ export const seed = (html: string, rel: string) => {
   if (/<base\b/i.test(html)) return html;
   const dir = path.posix.dirname(rel.split(path.sep).join('/'));
   const tag = `<base href="${dir === '.' ? '/' : `/${dir.split('/').map(encodeURIComponent).join('/')}/`}">`;
-  const at = /<head[^>]*>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
+  const at = /<head(\s[^>]*)?>/i.exec(html) || /<!doctype[^>]*>/i.exec(html);
   return at ? html.slice(0, at.index + at[0].length) + tag + html.slice(at.index + at[0].length) : tag + html;
 };
 

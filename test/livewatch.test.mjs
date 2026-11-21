@@ -71,3 +71,16 @@ test('a page saved by a rename again and again: each save is announced', async (
     assert.ok((await above('hot', was)) > was, `save ${i} was announced (hot ${was} → ${state.hot})`);
   }
 });
+
+test('a save in venv, __pycache__ or bower_components is not announced, and the file is still served', async () => {
+  await ready;
+  for (const d of ['venv', '__pycache__', 'bower_components']) fs.mkdirSync(path.join(DIR, d));
+  await sleep(200); // the folders are seen
+  const was = { ...state };
+  for (const d of ['venv', '__pycache__', 'bower_components']) fs.writeFileSync(path.join(DIR, d, 'x.js'), '1');
+  await sleep(700);
+  assert.deepEqual(state, was, 'the lab said nothing');
+  assert.equal((await fetch(`${B}/venv/x.js`)).status, 200, 'served as any other file');
+  fs.writeFileSync(path.join(DIR, 'app.js'), '1');
+  assert.ok((await above('files', was.files)) > was.files, 'a save beside them is announced');
+});

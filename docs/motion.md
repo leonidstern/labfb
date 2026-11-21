@@ -11,7 +11,6 @@ Code that needs a number (a timer, a Web Animation, which can't read a `var()`) 
 
 | Token (`--lab-*` hook) | Value | For |
 | --- | --- | --- |
-| `--_t-instant` (`--lab-t-instant`) | 0 ms | no motion: the state changes at once (reserved; nothing needs it yet) |
 | `--_t-quick` (`--lab-t-quick`) | 120 ms | a hover, a colour, a small fade, a press: small and local |
 | `--_t-base` (`--lab-t-base`) | 200 ms | something appears or moves a little: a card, a message, a fade-in, a box changing size |
 | `--_t-slow` (`--lab-t-slow`) | 300 ms | the biggest movements: a sheet, a pin changing face |

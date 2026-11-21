@@ -25,7 +25,7 @@ export function startFrame(script: HTMLScriptElement | null) {
   const none = () => {};
   const S = { page: script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/', frame: window.name, busy: () => Boolean(board()?.busy?.()) };
   bindLive({
-    S, script, host, root, coarse: false, fonts: null, pinCursorStyle: null, still: matchMedia('(prefers-reduced-motion: reduce)'), tabTitle: { base: '' },
+    S, script, host, root, coarse: false, pageStyle: null, pinCursorStyle: null, still: matchMedia('(prefers-reduced-motion: reduce)'), tabTitle: { base: '' },
     chatBtn: root.querySelector('.chat-btn'), listBtn: root.querySelector('.list-btn'),
     drawList: none, reflow: none, relook: none, load: none, loadChanges: none, syncReads: none,
   });
