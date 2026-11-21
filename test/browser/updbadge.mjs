@@ -86,6 +86,7 @@ try {
       // A computer: the badge sits on the pill's mark.
       const ctx = await browser.newContext({ viewport: { width: 1000, height: 700 } });
       await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      await ctx.addInitScript(() => addEventListener('load', () => fetch('/data.json').catch(() => {}))); // the page uses data.json: a save of it reloads the page
       const p = await ctx.newPage();
       let popups = 0;
       ctx.on('page', () => popups++); // a page the pill's link opens (target _blank)
@@ -168,6 +169,7 @@ try {
       const phone = pw.devices[eng === 'webkit' ? 'iPhone 13' : 'Pixel 7'];
       const pctx = await browser.newContext({ ...phone });
       await pctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+      await pctx.addInitScript(() => addEventListener('load', () => fetch('/data.json').catch(() => {}))); // the page uses data.json: a save of it reloads the page
       const q = await pctx.newPage();
       let qloads = 0;
       q.on('load', () => qloads++);

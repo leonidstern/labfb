@@ -53,6 +53,7 @@ for (const eng of ['webkit', 'chromium']) {
   // Done pins show by default: a resolved pin stays on the page, so the go check below needs no reload
   // (a reload would land in the counts the save checks at the end make).
   await ctx.addInitScript(() => localStorage.setItem('lab-name', 'leo'));
+  await ctx.addInitScript(() => addEventListener('load', () => fetch('/data.json').catch(() => {}))); // the page uses data.json: a save of it reloads the page
   const p = await ctx.newPage();
   let loads = 0;
   p.on('load', () => loads++);
