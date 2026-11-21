@@ -895,7 +895,7 @@ export async function run(plan, ctx, opts) {
     }
     // (A press that met an earlier pin or drawing opened its thread: the words went there as a reply. No new pin.)
     if (c.parent) return void (note('   (the press opened an earlier pin\'s thread, the words are a reply there: no new pin)'), await p.keyboard.press('Escape').catch(() => {}));
-    if (fading) {
+    if (fading && (c.anchor?.selector === 'body' || !c.anchor?.selector)) {
       silent('pin-during-a-patch-fade-lands-on-the-page-itself', `step ${i}: ${Date.now() - d.patchedAt} ms after a save was patched into ${d.key}, a click inside <${tg.node?.tag || tg.tag} data-t="${op.target}"> (its box ${at.box.map(Math.round)}, the click at ${at.x},${at.y}) made a pin on ${JSON.stringify(c.anchor?.element)} ${c.anchor?.selector === 'body' ? '(the page itself, no element)' : ''}: while the widget cross-fades the patch the browser hits nothing but <html> (${plan.browser})`, {});
       return void (await sleep(350), await p.keyboard.press('Escape').catch(() => {}));
     }

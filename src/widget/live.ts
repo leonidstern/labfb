@@ -2,6 +2,7 @@
 import { pillLine } from './list.ts';
 
 import { aroundMorph } from './trial.ts';
+import { cut } from './anchoring.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -230,15 +231,22 @@ export function startLive() {
     // file that failed to load, a rejected promise, a script the page's policy blocked. The last 8, each once, sent a
     // second after the last one. The widget's own are not the page's. (A file that failed while the page was still loading
     // is the lab's to say: the page's text lists the files it asked for that the lab did not have.)
-    const oops: string[] = [];
+    // Each route keeps its own list (the app can go to another route with no page load): posted under the route it was thrown on.
+    const oops: Record<string, string[]> = {};
+    const told = new Set<string>();
     let oopsTimer: any = 0;
     const tell = (t: string) => {
-      t = t.replace(/\s+/g, ' ').slice(0, 200);
-      if (oops.includes(t) || /^Script error\.?/.test(t)) return;
-      oops.push(t);
-      if (oops.length > 8) oops.shift();
+      t = cut(t.replace(/\s+/g, ' '), 200);
+      const page = W.S.page, list = (oops[page] ||= []);
+      if (list.includes(t) || /^Script error\.?/.test(t)) return;
+      list.push(t);
+      if (list.length > 8) list.shift();
+      told.add(page);
       clearTimeout(oopsTimer);
-      oopsTimer = setTimeout(() => fetch(W.script.dataset.live.replace(/live$/, 'errors'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page: W.S.page, list: oops }) }).catch(() => {}), 1000);
+      oopsTimer = setTimeout(() => {
+        for (const page of told) fetch(W.script.dataset.live.replace(/live$/, 'errors'), { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ page, list: oops[page], tab }) }).catch(() => {});
+        told.clear();
+      }, 1000);
     };
     if (!board) {
       addEventListener('error', (e: any) => e.filename?.includes('/_lab/') || tell(e.message ? `${e.message} (${(e.filename || '').split('/').pop() || 'page'}:${e.lineno})` : `failed to load ${e.target?.src || e.target?.href}`), true);
@@ -607,8 +615,10 @@ export function startLive() {
         };
         // WebKit shifts the whole page by scrollY for ~250 ms under a view transition when scrolled: it only fades there when at the top.
         const webkit = /AppleWebKit/.test(navigator.userAgent) && !/Chrome\/|Chromium\/|Edg\//.test(navigator.userAgent);
-        if (document.startViewTransition && !W.still.matches && !(webkit && scrollY > 0)) document.startViewTransition(safe);
-        else safe();
+        if (document.startViewTransition && !W.still.matches && !(webkit && scrollY > 0)) {
+          // Under the cross-fade the browser hits nothing but <html> (a click then pinned the page): W.fade is what a click waits for (comments.js, pinned).
+          const fade: Promise<void> = (W.fade = Promise.race([document.startViewTransition(safe).finished.catch(() => {}), new Promise((r) => setTimeout(r, 1500))]).then(() => void (W.fade === fade && (W.fade = null))));
+        } else safe();
       } catch {
         reload();
       }
