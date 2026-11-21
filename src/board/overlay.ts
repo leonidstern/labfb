@@ -165,8 +165,10 @@ export function show(name: string, o: Opts) {
     let t0 = 0;
     const fade = (now: number) => {
       const k = Math.min(1, ((t0 ||= now) === now ? 0 : now - t0) / d);
-      if (k < 1) (view.style.setProperty('--bv-o', String(k)), requestAnimationFrame(fade));
-      else view.style.removeProperty('--bv-o');
+      if (k < 1) {
+        view.style.setProperty('--bv-o', String(k));
+        requestAnimationFrame(fade);
+      } else view.style.removeProperty('--bv-o');
     };
     view.style.setProperty('--bv-o', '0');
     requestAnimationFrame(fade);
