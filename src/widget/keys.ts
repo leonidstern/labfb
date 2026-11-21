@@ -59,7 +59,7 @@ export function bindKeys(w: unknown) {
   addEventListener('selectstart', (e) => {
     const de = document.documentElement;
     const t = (e.target instanceof Element ? e.target : (e.target as Node)?.parentElement ?? null) as Element | null;
-    if (de.classList.contains('lab-pinning') && !de.classList.contains('lab-shift') && !t?.closest('input, textarea, select, [contenteditable], [data-lab-comments]')) e.preventDefault();
+    if (W.host.hasAttribute('data-lab-pinning') && !de.classList.contains('lab-shift') && !t?.closest('input, textarea, select, [contenteditable], [data-lab-comments]')) e.preventDefault();
   }, true);
   addEventListener('keydown', (e) => e.key === 'Alt' && setAlt(true), true);
   addEventListener('keyup', (e) => e.key === 'Alt' && setAlt(false), true);

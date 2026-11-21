@@ -1399,7 +1399,7 @@ export const markQuote = (anchor) => {
   if (!canMark) return;
   const range = anchor && quoteRange(anchor);
   if (!range) return CSS.highlights.delete('lab-quote');
-  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: lab-pinning in
+  // WebKit paints no highlight set while the text can't be selected (comments on, Shift up: data-lab-pinning in
   // comments.js), and keeps one set while it can: the page's text is selectable for the frame the words are lit in.
   document.documentElement.classList.add('lab-lit');
   CSS.highlights.set('lab-quote', new Highlight(range));
