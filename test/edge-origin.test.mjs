@@ -189,13 +189,13 @@ test('the agent\'s endpoints: no key, the page\'s key, a wrong key of the right 
   assert.equal((await raw(PORT, '/_lab/pending', { headers: { 'x-lab-agent': '1', 'x-lab-admin': agent } })).status, 200, 'the agent itself is let in');
 });
 
-test('the owner\'s switches (flags, actions, labs) take the page\'s key alone: not none, not a wrong one, not the agent\'s', async () => {
+test('the owner\'s switch (labs) takes the page\'s key alone: not none, not a wrong one, not the agent\'s', async () => {
   const { agent, token } = lab.keys();
   const tries = [['no key', {}], ['a wrong key', { 'x-lab-admin': '0'.repeat(24) }], ['the agent key', { 'x-lab-admin': agent, 'x-lab-agent': '1' }], ['the key and more', { 'x-lab-admin': token + 'a' }], ['an empty key', { 'x-lab-admin': '' }]];
   const settings = path.join(ENV.XDG_CONFIG_HOME, 'labit', 'settings.json');
   const before = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : null;
   for (const [what, headers] of tries) {
-    for (const [p, method, body] of [['/_lab/flags', 'POST', { flag: 'inkOnText', on: true }], ['/_lab/api/actions', 'PUT', [{ name: 'evil', prompt: 'do harm' }]], ['/_lab/labs', 'POST', { action: 'stop', port: PORT }]]) {
+    for (const [p, method, body] of [['/_lab/labs', 'POST', { action: 'stop', port: PORT }]]) {
       const r = await raw(PORT, p, { method, body: JSON.stringify(body), headers: { 'content-type': 'application/json', origin: lab.B, ...headers } });
       assert.equal(r.status, 403, `${what} on ${p} → ${r.status}`);
     }
@@ -221,7 +221,7 @@ test('a JSON body that is null, a number, a string or a list is the sender\'s mi
   const asAgent = { 'x-lab-admin': agent, 'x-lab-agent': '1' };
   const ends = [
     ['/_lab/api/comments', 'POST', {}], ['/_lab/bye', 'POST', {}], ['/_lab/me', 'POST', {}], ['/_lab/rule', 'POST', {}], ['/_lab/api/reads', 'POST', {}], ['/_lab/api/sections', 'POST', {}],
-    ['/_lab/flags', 'POST', own], ['/_lab/api/actions', 'PUT', own], ['/_lab/labs', 'POST', own],
+    ['/_lab/labs', 'POST', own],
     ['/_lab/ack', 'POST', asAgent], ['/_lab/wait', 'POST', asAgent],
   ];
   const bad = [];

@@ -96,7 +96,7 @@ export function bindAnchoring(deps: Deps) {
 
 // A motion token (--_t-quick, -base, -slow, -loop, -hold, styles.css) in milliseconds, times `times`: for a timer or a
 // Web Animation, which can't read a var(). It is 0 under reduced motion, as the CSS durations are (hold excepted).
-export function ms(token: 'instant' | 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
+export function ms(token: 'quick' | 'base' | 'slow' | 'loop' | 'hold', times = 1): number {
   const v = /^\s*(-?[\d.]+)(m?s)\s*$/.exec(getComputedStyle(host).getPropertyValue(`--_t-${token}`));
   return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) * times : 0;
 }
@@ -1225,8 +1225,7 @@ function quoteRange(anchor, node = null, strict = false, fresh = false) {
 // src/widget/thread.ts). Found as the pin and the highlight find them.
 export const quoteRangeOf = (anchor) =>
   quoteRange(anchor) || (anchor?.quote?.exact && /^<(body|html)[\s>]/.test(anchor.element || '') ? quoteRange(anchor, document.body, true) : null);
-// A message's name with its small marks: ↩ replied, ✅ done.
-// A message's name with its small mark: a green ✓ when done. An agent's session id ("Claude · session 8a296ba1") is left off.
+// A message's name. An agent's session id ("Claude · session 8a296ba1") is left off.
 export const nameLine = (name) => el('b', {}, String(name || '').replace(/\s*·\s*session\s+\S+$/i, ''));
 // A block named in a message: its heading in view with room above, and outlined for a moment. On the element itself
 // (the widget's layer is redrawn as comments arrive, which would drop an outline drawn there).

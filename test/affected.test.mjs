@@ -27,7 +27,7 @@ test('a mapped widget module runs its tests, the build beside it adds nothing, a
 });
 
 test('the core, the server, the build, package.json and unknown paths run everything', () => {
-  for (const f of ['src/comments.js', 'src/widget/styles.css', 'local.mjs', 'lib/flags.ts', 'package.json', 'scripts/build-widget.mjs', 'ci/affected.mjs', 'src/widget/new.ts', 'new/thing.js']) {
+  for (const f of ['src/comments.js', 'src/widget/styles.css', 'local.mjs', 'lib/settings.ts', 'package.json', 'scripts/build-widget.mjs', 'ci/affected.mjs', 'src/widget/new.ts', 'new/thing.js']) {
     assert.equal(run([f]).tests, 'all', f);
   }
   // A built file changed without its source: a hand edit, so everything.

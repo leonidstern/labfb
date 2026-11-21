@@ -446,6 +446,12 @@ export function bindMotion(w: unknown) {
     scrollQuiet = window.setTimeout(scrollOver, 1500);
   }, { capture: true, passive: true });
   addEventListener('scrollend', () => W.coarse && scrollOver(), { capture: true, passive: true });
-  setInterval(() => ((S.slow || slowEls.size > 0) && slowAll(), drawMotion()), 1000);
+  // Once a second, for what starts on its own (a phone's controls come with any loop; a slowed page slows what began since).
+  // Nothing to draw or fade out (comments off, or a computer with no ⌥ held and nothing paused): no scan of the page.
+  const idle = () => (!S.on || (!W.coarse && !altMotion && !held.size)) && ![...ctls.values()].some((c) => c.box.classList.contains('on'));
+  setInterval(() => {
+    if (S.slow || slowEls.size > 0) slowAll();
+    if (!document.hidden && !idle()) drawMotion();
+  }, 1000);
   if (W.coarse) new MutationObserver(() => drawMotion()).observe(W.host, { attributeFilter: ['data-sheet'] }); // a sheet opens: the controls go
 }
