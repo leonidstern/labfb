@@ -33,7 +33,7 @@ export const goTo = (c, keys = false) => {
   scrollPageTo(top); // with room below the page's end on phones, for a pin near it
 };
 
-export function drawList() {
+export function drawList(places?: Map<string, { moved?: boolean }>) {
   const all = W.threads();
   W.paintWho?.(); // the pill's words and a phone sheet's line follow the agent's work
   const freshAll = all.filter((c) => !W.isPage(c)).reduce((n, c) => n + W.unread(c).length, 0); // a new message in a done thread counts too
@@ -43,11 +43,12 @@ export function drawList() {
   W.listBtn.replaceChildren(W.coarse ? 'new' : W.keyLabel('new', W.KEYS.next), W.el('b', { class: `cnt${freshAll ? '' : ' zero'}` }, String(freshAll))); // phones: no keys
   W.listBtn.setAttribute('aria-label', `next new comment, ${freshAll} new`);
   W.listBtn.setAttribute('aria-keyshortcuts', W.KEYS.next);
-  W.listBtn.title = 'next new comment: W, or ⌥W while typing (Shift for the one before)';
+  const key = W.KEYS.next.toUpperCase();
+  W.listBtn.title = `next new comment: ${key}, or ⌥${key} while typing (Shift for the one before)`;
   W.listBtn.disabled = !freshAll;
   W.listBtn.classList.toggle('quiet', !freshAll);
   const doneCount = all.filter((c) => !W.isPage(c) && (c.resolved || workState(c)[0] === 'done') && !W.unread(c).length).length;
-  const gone = movedPins();
+  const gone = movedPins(places);
   W.movedBtn.hidden = !W.S.on || !gone.length;
   W.movedBtn.textContent = `moved · ${gone.length}`;
   W.doneBtn.hidden = !W.S.on;
@@ -133,7 +134,8 @@ export function pillLine() {
 export const stepNew = (dir) => {
   const fresh = W.threads().filter((c) => !W.isPage(c) && W.unread(c).length);
   if (!fresh.length) return;
-  const top = (c) => W.position(c.anchor || {}).top;
+  const tops = new Map(fresh.map((c) => [c.id, W.position(c.anchor || {}).top])); // read once each, not in the comparator
+  const top = (c) => tops.get(c.id) ?? W.position(c.anchor || {}).top;
   fresh.sort((a, b) => top(a) - top(b));
   // The open one was read when it opened, so it's no longer in the list: step on from where it is on the page.
   const open = W.S.openId && W.threads().find((c) => c.id === W.S.openId);
@@ -149,7 +151,7 @@ export const stepNew = (dir) => {
 };
 
 // Open pins whose spot is gone from the page: off the page, listed in the ⋯ menu as "moved · N".
-const movedPins = () => W.threads().filter((c) => !W.isPage(c) && !c.resolved && W.position(c.anchor || {}).moved);
+const movedPins = (places?: Map<string, { moved?: boolean }>) => W.threads().filter((c) => !W.isPage(c) && !c.resolved && (places?.get(c.id) || W.position(c.anchor || {})).moved);
 export const stepMoved = () => {
   const all = movedPins();
   if (all.length) goTo(all[(all.findIndex((c) => c.id === W.S.openId) + 1) % all.length]);

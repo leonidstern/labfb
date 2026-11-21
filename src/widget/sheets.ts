@@ -205,8 +205,27 @@ export function backCloses() {
   }
 }
 
+// The dimmed page under a sheet pulls the sheet too. The scrim lives as long as the page, a sheet is drawn again on every
+// render: so the scrim's four touch listeners are added once, and hand each touch to the handlers of the sheet that is
+// open when it begins (swipeDown fills `swipes`; a closed sheet's entry goes with its node).
+type Swipe = { start: (e: TouchEvent) => void; move: (e: TouchEvent) => void; end: (e: TouchEvent) => void };
+const swipes = new WeakMap<Element, Swipe>();
+let pulling: Swipe | null = null; // the one the touch on the scrim began with, until it lifts
+let scrimBound = false;
+const bindScrim = () => {
+  scrimBound = true;
+  W.scrim.addEventListener('touchstart', (e) => (pulling = swipes.get(W.openSheet()) || null)?.start(e), { passive: true });
+  W.scrim.addEventListener('touchmove', (e) => pulling?.move(e), { passive: false });
+  for (const k of ['touchend', 'touchcancel'] as const)
+    W.scrim.addEventListener(k, (e) => {
+      pulling?.end(e);
+      pulling = null;
+    });
+};
+
 export function swipeDown(node, close, grows = false) {
   if (!W.coarse) return;
+  if (!scrimBound) bindScrim();
   // A sheet that grows (the chat) has two heights, as iOS and Android sheets do: pull it up (or flick) to fill the
   // screen, pull it down from there to go back; from the lower one a pull down closes it as before.
   let raw = 0;
@@ -235,7 +254,6 @@ export function swipeDown(node, close, grows = false) {
   let fromScrim = false; // the touch began on the dimmed page under the sheet: that pulls the sheet too
   const onStart = (e) => {
     fromScrim = e.currentTarget === W.scrim;
-    if (fromScrim && W.openSheet() !== node) return void (mode = 'off');
     const t = e.touches[0];
     x0 = t.clientX;
     y0 = t.clientY;
@@ -246,7 +264,6 @@ export function swipeDown(node, close, grows = false) {
     mode = e.touches.length > 1 || box?.localName === 'textarea' ? 'off' : null;
   };
   node.addEventListener('touchstart', onStart, { passive: true });
-  W.scrim.addEventListener('touchstart', onStart, { passive: true });
   // A move up or down that nothing in the sheet scrolls (short messages, a box already at its end) is the sheet's, not
   // the page's: Safari with the keyboard up pans the page under a sheet whatever its overflow says, and the pin it
   // belongs to left the screen (iOS 27 simulator, 20 Nov: 317 px after one swipe on a thread).
@@ -303,7 +320,6 @@ export function swipeDown(node, close, grows = false) {
     W.host.style.setProperty('--lab-p', String(way));
   };
   node.addEventListener('touchmove', onMove, { passive: false });
-  W.scrim.addEventListener('touchmove', onMove, { passive: false });
   const end = (e) => {
     if (fromScrim !== (e.currentTarget === W.scrim)) return;
     const was = mode;
@@ -353,9 +369,8 @@ export function swipeDown(node, close, grows = false) {
     settle(undefined, dy > 0 ? -vs : vs);
   };
   node.addEventListener('touchend', end);
-  W.scrim.addEventListener('touchend', end);
-  W.scrim.addEventListener('touchcancel', end);
   node.addEventListener('touchcancel', end);
+  swipes.set(node, { start: onStart, move: onMove, end });
 }
 
 export function startSheets() {
@@ -507,10 +522,6 @@ export function startSheets() {
         watch('blur');
         sendSoon();
       });
-      W.S.dbg = (line) => {
-        lines.push(`${Math.round(performance.now() - t0)} ${line}`);
-        sendSoon();
-      };
       // The address bar growing or shrinking resizes the view too: each resize is followed for 1.5 s like a keyboard.
       W.vv.addEventListener('resize', () => {
         watch('resize');

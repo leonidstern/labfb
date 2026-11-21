@@ -1,4 +1,4 @@
-// The lab in front of a dev server (--proxy): a redirect to the dev server's own address comes back as the lab's, and
+// The lab in front of a dev server (--proxy): a page in another charset, a redirect to the dev server's own address comes back as the lab's, and
 // a person who leaves (a closed tab, a cancelled event stream) ends the dev server's side of the request too.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,8 +11,12 @@ let closed = 0; // event streams the dev server saw end
 const dev = http.createServer((req, res) => {
   const here = `http://localhost:${dev.address().port}`;
   if (req.url === '/old') return void res.writeHead(302, { location: here + '/new?x=1' }).end();
+  if (req.url === '/ip') return void res.writeHead(302, { location: `http://127.0.0.1:${dev.address().port}/new#h` }).end();
+  if (req.url === '/six') return void res.writeHead(302, { location: `http://[::1]:${dev.address().port}/new` }).end();
   if (req.url === '/away') return void res.writeHead(302, { location: 'https://example.com/' }).end();
   if (req.url === '/near') return void res.writeHead(302, { location: here + '0/x' }).end(); // another port, not this server
+  if (req.url === '/latin') return void res.writeHead(200, { 'content-type': 'text/html; charset=iso-8859-1' }).end(Buffer.from('<!doctype html><html><head><title>t</title></head><body>caf\xe9</body></html>', 'latin1'));
+  if (req.url === '/nohead') return void res.writeHead(200, { 'content-type': 'text/html' }).end('\n<!-- c -->\n<!DOCTYPE html>\n<html><body><p>no head</p></body></html>');
   if (req.url === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     res.write('data: 1\n\n');
@@ -50,8 +54,25 @@ test('a redirect to the dev server\'s own address stays on the lab; one to somew
     return res.headers.location;
   };
   assert.equal(await at('/old'), `http://localhost:${PORT}/new?x=1`);
+  assert.equal(await at('/ip'), `http://localhost:${PORT}/new#h`, 'the same server by its number');
+  assert.equal(await at('/six'), `http://localhost:${PORT}/new`);
   assert.equal(await at('/away'), 'https://example.com/');
   assert.equal(await at('/near'), `http://localhost:${dev.address().port}0/x`, 'an address that only starts the same is not the dev server');
+});
+
+test('a page the dev server sends as iso-8859-1 is read as such and goes on as UTF-8', async () => {
+  await up();
+  const r = await fetch(`http://localhost:${PORT}/latin`, { headers: { accept: 'text/html' } });
+  assert.equal(r.headers.get('content-type'), 'text/html; charset=utf-8');
+  const text = await r.text();
+  assert.ok(text.includes('caf\u00e9'), 'the é is an é');
+  assert.ok(!text.includes('\ufffd'), 'no replacement marks');
+});
+
+test('a page with a comment before its doctype and no <head> keeps its doctype whole', async () => {
+  await up();
+  const text = await (await fetch(`http://localhost:${PORT}/nohead`, { headers: { accept: 'text/html' } })).text();
+  assert.match(text, /<!DOCTYPE html><script>[^]*?<\/script>\n<html>/, 'the doctype is in one piece, the reload-holder after it');
 });
 
 test('a person who leaves an event stream ends it at the dev server too', async () => {
