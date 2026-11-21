@@ -210,6 +210,42 @@ test("a page's comments follow its file when it is renamed or moved, while the l
   await lab.stop();
 });
 
+test("a page commented after the first one follows its file too: renamed, renamed again, moved into a folder, running or stopped", async () => {
+  const dir = folder();
+  for (const n of ['one', 'two', 'three']) fs.writeFileSync(path.join(dir, `${n}.html`), `<!doctype html><h1>${n}</h1>`);
+  let lab = await start(dir);
+  await lab.post({ page: '/two', name: 'Leo', text: 'on two', anchor });
+  const { comment: one } = await lab.post({ page: '/one', name: 'Leo', text: 'on one', anchor });
+  await lab.post({ page: '/one', name: 'Leo', text: 'reply', parent: one.id });
+  const { comment: three } = await lab.post({ page: '/three', name: 'Leo', text: 'on three', anchor });
+  const follows = async (page, n, gone) => {
+    let got = [];
+    for (let i = 0; i < 60 && got.length < n; i++) {
+      await sleep(100);
+      got = await lab.list(page);
+    }
+    assert.equal(got.length, n, `${n} comments followed the file to ${page}`);
+    assert.equal((await lab.list(gone)).length, 0, `${gone} has none left`);
+  };
+  // Running: renamed at once, though /one was not the first page commented.
+  fs.renameSync(path.join(dir, 'one.html'), path.join(dir, 'renamed.html'));
+  await follows('/renamed', 2, '/one');
+  // And again (a chain).
+  fs.renameSync(path.join(dir, 'renamed.html'), path.join(dir, 'again.html'));
+  await follows('/again', 2, '/renamed');
+  // Stopped: renamed and moved into a folder, then started.
+  await lab.stop();
+  fs.mkdirSync(path.join(dir, 'sub'));
+  fs.renameSync(path.join(dir, 'again.html'), path.join(dir, 'sub', 'again.html'));
+  fs.renameSync(path.join(dir, 'three.html'), path.join(dir, 'third.html'));
+  lab = await start(dir);
+  await follows('/sub/again', 2, '/again');
+  await follows('/third', 1, '/three');
+  assert.deepEqual((await lab.list('/third')).map((c) => c.id), [three.id]);
+  assert.equal((await lab.list('/two')).length, 1, 'a page that did not move keeps its comment');
+  await lab.stop();
+});
+
 test('a done thread is archived a month after it was resolved, not after its last message', async () => {
   const dir = folder();
   fs.mkdirSync(path.join(dir, '.lab/comments'), { recursive: true });

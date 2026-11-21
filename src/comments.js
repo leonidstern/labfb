@@ -38,18 +38,16 @@ import { inFrame, startFrame } from './widget/frame.ts';
 import { bindSections, startSections } from './widget/sections.ts';
 import { holdWhileOpen } from './widget/hold.ts';
 import { inkSvg } from './widget/ink.ts';
-import { NAME_MAX } from '../lib/actions.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
 import { bindBoardCam, showBoard } from './widget/boardcam.ts';
-import { bindExperiments, expBack, expBtn, expClose, expIsOpen, expNote, expRows, flagNames, mayFlag, startFlag } from './widget/experiments.ts';
 import { bindFramework, overFramework, scanForFramework } from './widget/framework.ts';
 import { bindKeys } from './widget/keys.ts';
 import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, slowEls } from './widget/motion.ts';
 
 (() => {
   // The widget's state, in one place, so its parts can live in their own files (src/widget/*) and share it.
-  const state = { dbg: null }; // dbg: ?kbdebug's line into the phone's log (sheet drags)
+  const state = {};
   // Debug only (a page, e.g. a test, sets window.__labDebug before this loads): a change to what the page shows that no
   // render() follows within two frames goes into window.__labMissed, with where it was made. From the first render on;
   // a change left unredrawn on purpose says so with quiet(key). Otherwise S is the plain object and this costs nothing.
@@ -77,8 +75,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const W = {
     paintWho: /** @type {(() => void) | null} */ (null), // set by live.ts: the pill's words, painted again as the agent's work moves on
     get $() { return $; },
-    get FLAGS() { return FLAGS; },
-    get FLAGSAPI() { return FLAGSAPI; },
     get OFF() { return OFF; },
     get isOff() { return isOff; },
     get S() { return S; },
@@ -99,8 +95,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get movedBtn() { return movedBtn; },
     get drawList() { return drawList; },
     get el() { return el; },
-    get fonts() { return fonts; },
-    get flag() { return flag; },
+    get pageStyle() { return pageStyle; },
     get goTo() { return goTo; },
     get headers() { return headers; },
     get host() { return host; },
@@ -205,15 +200,35 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const API = '/_lab/api/comments';
   const pageNow = () => script?.dataset.page || location.pathname.replace(/\/+$/, '') || '/';
   S.page = pageNow();
+  // One pass (a drawing, a handler) asks the same things many times: who replied to a pin, what is unread, what
+  // localStorage holds. Each is worked out once and kept until the pass ends (the next microtask) or what it comes from
+  // changes (a new list of comments, something stored, something read), so a lab with thousands of pins draws in one
+  // sweep, not one per question.
+  /** @type {{ list: any[], n: number, by: Map<string, any[]>, unread: Map<string, any[]>, stored: Map<string, string> } | null} */
+  let pass = null;
+  const passNow = () => {
+    const list = S.comments || [];
+    if (pass?.list === list && pass.n === list.length) return pass;
+    const by = new Map();
+    for (const c of list) if (c.parent) (by.get(c.parent) || by.set(c.parent, []).get(c.parent)).push(c);
+    const mine = (pass = { list, n: list.length, by, unread: new Map(), stored: new Map() });
+    queueMicrotask(() => pass === mine && (pass = null));
+    return mine;
+  };
   const store = {
     get: (k) => {
-      try {
-        return localStorage.getItem(k) || '';
-      } catch {
-        return '';
+      const stored = passNow().stored;
+      if (!stored.has(k)) {
+        try {
+          stored.set(k, localStorage.getItem(k) || '');
+        } catch {
+          return '';
+        }
       }
+      return stored.get(k);
     },
     set: (k, v) => {
+      pass = null;
       try {
         localStorage.setItem(k, v);
       } catch {}
@@ -227,12 +242,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   if (ME && !store.get('lab-name')) store.set('lab-name', ME);
   // Where to tell the lab a new name, so the next lab on this computer starts out knowing it.
   const MEAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'me') : '';
-  // What this lab is trying (lib/flags.ts): flag -> { name, on, project }. The ⋯ menu's Experiments list switches them
-  // (this computer only, saved in your own settings); one the project's labit.json sets is shown there, not switched.
-  const FLAGS = (() => { try { return JSON.parse(script?.dataset.flags || '{}'); } catch { return {}; } })();
-  const flag = (name) => FLAGS[name]?.on === true;
-  const FLAGSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'flags') : '';
-  const ACTSAPI = script?.dataset.live ? script.dataset.live.replace(/live$/, 'api/actions') : ''; // your actions, from the "…" menu
   let meSent = ME;
   const rememberMe = (name) => {
     if (!MEAPI || !name || name === meSent) return;
@@ -280,10 +289,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     <div class="layer"></div>
     <div class="motions"></div>
     <div class="ui"><div class="hint" role="status" hidden></div>
-    <div class="list chatwin" hidden><div class="tabs"><b>chat</b></div><div class="msgs"></div><div class="chat"></div></div>
+    <div class="list chatwin" hidden><div class="tabs"></div><div class="msgs"></div><div class="chat"></div></div>
     <div class="left"><button class="secondary copy-all" type="button" hidden>copy link</button></div>
     <div class="bar">
-      <button class="secondary chat-btn" type="button" hidden title="chat (T)">chat</button>
+      <button class="secondary chat-btn" type="button" hidden>chat</button>
       <button class="secondary list-btn" type="button" hidden>list</button>
       <button class="secondary done-btn" type="button" hidden title="show or hide done pins on the page"></button>
       <button class="secondary moved-btn" type="button" hidden title="pins whose spot is gone from the page: open one to drop it on a new spot, or close it"></button>
@@ -329,6 +338,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   };
   const chatEl = $('.chatwin');
   const chatBtn = /** @type {HTMLElement} */ (root.querySelector('.chat-btn'));
+  chatBtn.title = `chat (${KEYS.chat.toUpperCase()})`;
   S.refit = () => {}; // phones: fit the sheets to the keyboard again (below)
   S.chatOpen = false;
 
@@ -405,7 +415,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     for (const c of document.readyState === 'complete' ? threads() : []) {
       if (quick === true && !(c.session && !c.anchor?.element)) continue;
       const edit = store.get(`lab-edit:${c.id}`) || undefined;
-      if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector) continue;
+      if (c.resolved || looked.has(c.id) || !(S.isAdmin || edit) || !c.anchor?.selector || c.anchor.gone) continue;
       looked.add(c.id);
       const anchor = foundAt(c.anchor);
       // Its words or element were changed or taken away (the agent's edit): the lab says so on the pin's next wait.
@@ -474,9 +484,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   }, 10000);
 
   // One way to pin (Leo, 20 Nov): a click pins, on a page or a board, the page's own links and buttons keep their
-  // clicks, and holding Option pins on anything, controls too. No switch, no keys, no pointer mode.
-  // Switching only changes the button and the pointer: nothing on the page is redrawn, so nothing flickers.
-  // Whether a click on the page would place something: comments on, not in cursor mode, and not while you are
+  // clicks, and holding Option pins on anything, controls too. There is no mode to switch.
+  // Whether a click on the page would place something: comments on, and not while you are
   // writing one — mid-sentence the page's own pointer is what you want, not a second pin waiting to be dropped.
   const setPinning = () => {
     const placing = S.on && !anyWriting() && !S.draft; // an open new comment, empty or not, gives the page its own pointer (Leo, 18 Nov)
@@ -663,8 +672,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // prev / next / J / K: the thread swaps in place, no slide; the keyboard stays as it was (up stays up, down stays down).
   S.stepping = false;
   S.keepKeys = false;
-  // Done: resolved, or answered "Done: …" by someone other than its author (the agent).
-  // Done means the same everywhere (the list, the pins, show done): what workState says.
   // Computers (Leo, 2026-11-15, option 1b): one bar of segments (chat, new, go, ⋯) at the bottom right; the less used
   // ones (show done, copy link, hide) sit in the ⋯ menu. Comments hidden: the bar is just "comments". Phones keep theirs.
   // A word with its key marked inside it, as in menus: (c)hat, ne(w).
@@ -729,14 +736,10 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       void switcher().then((m) => m?.openSwitcher());
     });
   }
-  bindExperiments(W);
   function placeBar() {
-    const inMenu = !S.on ? []
-      : expIsOpen() ? [expBack, ...expRows, ...(mayFlag ? [] : [expNote])]
-      : [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, copyBtn, toggleBtn, ...(expBtn ? [expBtn] : []), ...(versionLine ? [versionLine] : [])];
+    const inMenu = !S.on ? [] : [...(labHead ? [labHead, labsBtn] : []), doneBtn, movedBtn, copyBtn, toggleBtn, ...(versionLine ? [versionLine] : [])];
     // In this order every time: a part that came back (hide comments, after showing them again) went to the end, below
     // the version line.
-    // The Experiments list swaps the menu's items for its own, so the menu is set whole, not only added to.
     if (S.on && (inMenu.some((b, i) => moreMenu.children[i] !== b) || moreMenu.children.length !== inMenu.length)) moreMenu.replaceChildren(...inMenu);
     if (!S.on && toggleBtn.parentNode !== bar) bar.insertBefore(toggleBtn, moreBtn);
     if (!S.on) root.querySelector('.left').append(copyBtn);
@@ -764,10 +767,15 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const mine = (c) => (plain(c.name) && plain(c.name) === plain(store.get('lab-name'))) || Boolean(store.get(`lab-edit:${c.id}`));
   // The agent's status messages ("on it") are never unread: they fold once the answer comes (messages.ts).
   const isNew = (c) => !S.seen.has(c.id) && !mine(c) && !isStatus(c);
-  const unread = (c) => [c, ...repliesOf(c.id)].filter(isNew);
+  const unread = (c) => {
+    const memo = passNow().unread;
+    if (!memo.has(c.id)) memo.set(c.id, [c, ...repliesOf(c.id)].filter(isNew));
+    return /** @type {any[]} */ (memo.get(c.id));
+  };
   const markSeen = (items) => {
     const fresh = items.filter((item) => !S.seen.has(item.id)).map((item) => item.id);
     for (const item of items) S.seen.add(item.id);
+    pass = null;
     store.set(seenKey(), [...S.seen].join(','));
     if (fresh.length) shareReads(fresh);
   };
@@ -791,11 +799,12 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (mineOnly.length) shareReads(mineOnly); // read here before: the other devices get it too
       if (!added.length) return;
       for (const id of added) S.seen.add(id);
+      pass = null;
       store.set(seenKey(), [...S.seen].join(','));
       shownAgain(); // typed text in an open box stays
     } catch {}
   }
-  const repliesOf = (id) => S.comments.filter((c) => c.parent === id);
+  const repliesOf = (id) => passNow().by.get(id) || [];
   // Pins show who left them: the first letter of the name.
   const initial = (name) => [...String(name || '').trim()][0]?.toUpperCase() || '';
   // A pin the agent left wears labit's own mark — the same one the bar shows while an agent listens — instead of a
@@ -828,8 +837,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   const SAY = { now: 'agent working on it', got: 'picked up by the agent', wait: 'waiting', stale: 'no update from the agent', missed: 'not answered', asks: 'agent asked a question' };
   // Ends a pin drag's window listener when the layer is redrawn under it (the pin is gone, its pointer events with it).
   S.dropDrag = null;
-  // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
-  /** @type {WeakMap<Element, any>} */
   // A link on the page to a board opens it over this same page, its pins this page's (Leo, 19 Nov: "can board be part
   // of same page?"); /_lab/board/<name> itself still works as a link from anywhere else. Any other way to a board keeps
   // the scroll under the page's key, so the board's back lands where you were. A page the browser gives back whole
@@ -856,6 +863,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       } catch {}
     });
   }
+  // What each pin on the layer was drawn from, so a redraw can keep the pin itself and only update it.
+  /** @type {WeakMap<Element, any>} */
   const pinData = new WeakMap();
   // A board is held to the screen (its own page, or a view over a page), so what sits on it is too: its pins, an open
   // card, a new comment's box. The page scrolling under a half view then moves none of them, and nothing is put back a
@@ -962,14 +971,14 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     S.refit();
     setPinning();
     copyBtn.hidden = !S.on || !S.isAdmin || list.every((c) => c.resolved);
-    drawList();
+    drawList(places);
     drawChat();
     if (!S.on) return done();
     list.forEach((c) => {
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone, clipped, covered } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped, covered, from, why } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -977,6 +986,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
           autoShut.add(c.id);
           send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
         }
+        if (!c.resolved) add(el('i', { class: 'lostmark', 'aria-hidden': 'true', style: `left:${from}px;top:${top}px` })); // where it stood: faint, no target
         if (S.openId !== c.id) return;
       }
       const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
@@ -995,7 +1005,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       // Its state as classes and words (the ring, the tick and the new dot are only seen). Set one by one: the
       // classes that carry an animation (.in, .swap) are left as they are, so nothing starts again.
       for (const [cls, on] of Object.entries({
-        resolved: c.resolved, done: state === 'done', new: news.length, moved,
+        resolved: c.resolved, done: state === 'done', new: news.length, moved, unsure: why === 'unsure' || why === 'changed',
         grab: movable, open: S.openId === c.id, dragging: false,
       })) pin.classList.toggle(cls, Boolean(on));
       pin.classList.add('pin');
@@ -1226,9 +1236,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     done();
   }
 
-  // Drag a pin to fix its spot: whoever started the thread (its key is kept in their browser) or an admin.
-  // The pin's tip (bottom left) lands where it is dropped; the new spot is saved like a fresh pin.
-  S.grabbing = false;
+  S.grabbing = false; // a pin is being dragged to fix its spot (thread.ts grab)
 
   // The open thread's card. New replies (Claude's too) are added to it in place, so the reply box keeps focus.
   S.openCard = null;
@@ -1269,9 +1277,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         moreMenu.classList.remove('out');
         if (LABS) void switcher().then((m) => m?.preloadSwitcher());
         requestAnimationFrame(() => [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true }));
-      } else if (expIsOpen()) {
-        expClose();
-        placeBar();
       }
     });
   }
@@ -1287,10 +1292,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       moreMenu.hidden = false;
     } else if (!moreMenu.hidden) goOut(moreMenu, () => (moreMenu.hidden = true));
     moreBtn.setAttribute('aria-expanded', String(open));
-    if (!open && expIsOpen()) {
-      expClose(); // it opens on its first page again
-      placeBar();
-    }
     if (open) [...moreMenu.querySelectorAll('button')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
     else if (refocus) moreBtn.focus({ preventScroll: true });
   }
@@ -1318,7 +1319,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     store.set('lab-on', '1');
   };
   copyBtn.addEventListener('click', () => copy(agentLink()));
-  // The list opens on "new" each time.
   // A #block link in a message: go to that block on the page. A phone's sheet covers the page, so it closes first.
   addEventListener('lab-goto', (e) => {
     const to = /** @type {CustomEvent} */ (e).detail;
@@ -1534,12 +1534,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // so the sheets keep their box just above the keyboard and fit the rest (see --lab-kb and --lab-vh in the CSS).
   const vv = window.visualViewport;
   startSheets();
-  // The chat stays at its newest message while it gets shorter (the keyboard coming up, the reply strip), unless
-  // you scrolled back to read.
-  const msgsEl = $('.msgs', chatEl);
-  S.stick = true;
-  msgsEl.addEventListener('scroll', () => (S.stick = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 48), { passive: true });
-  if ('ResizeObserver' in window) new ResizeObserver(() => S.stick && (msgsEl.scrollTop = msgsEl.scrollHeight)).observe(msgsEl);
   swipeDown(chatEl, () => ((S.chatOpen = false), render()), true);
   S.press = null;
   const stopPress = () => S.press && (clearTimeout(S.press.timer), (S.press = null));
@@ -1613,8 +1607,6 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   // The actions row of a new comment (the box is the comment, so no button for it): your own actions (labit.json
   // `actions`), each sending its text at once on a click. They go through the box's own send, so a missing name is asked
   // for there, a lab that can't be reached keeps them. ⌥ + 1…4 runs the nth button (holding ⌥ shows the numbers).
-  /** @type {{ i: number, a: { name: string, prompt: string }, until: number } | null} */
-  let ACT_GONE = null; // the action just deleted from a "…" list, while its "deleted · undo" is on offer (4 s)
   const quickRow = (draft, box) => {
     const row = el('div', { class: 'quick' });
     const field = /** @type {HTMLTextAreaElement} */ (box.querySelector('textarea'));
@@ -1632,262 +1624,72 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       b.addEventListener('click', () => go(field.value.trim() ? `${a.name}: ${field.value.trim()}` : a.name, a.prompt));
       return b;
     };
-    {
-      // Your list, in its order: as many chips as fit on one line (measured), then "…". "…"
-      // grows the line into the whole list (tap = use it) and, on this computer, hold or right-click a row to edit it, "+ add"
-      // (saved in your settings through the lab, PUT /_lab/api/actions; a new one goes at the end).
-      const mayEdit = Boolean(adminToken && ACTSAPI);
-      const menu = el('div', { class: 'acts', hidden: '' });
-      const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
-      const chips = LIST.map(chip);
-      let shown = LIST.length;
-      const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
-      const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
-      const save = async (next, why) => {
-        const r = await fetch(ACTSAPI, { method: 'PUT', headers: headers(), body: JSON.stringify({ actions: next }) }).catch(() => null);
-        if (!r?.ok) return void (why.textContent = r ? await r.text() : 'the lab is not answering');
-        LIST = (await r.json()).actions;
-        editing?.close();
-        const top = menu.scrollTop;
-        const fresh = quickRow(draft, box); // the line again, measured, with its menu open where it was
-        row.replaceWith(fresh);
-        menu.remove();
-        queueMicrotask(() => {
-          const d = /** @type {HTMLElement | null} */ (fresh.querySelector('[data-k="…"]'));
-          if (!d) return;
-          d.dataset.still = '1'; // open again as it was, no growing
-          d.click();
-          const m = fresh.nextElementSibling;
-          if (m?.classList.contains('acts')) m.scrollTop = top;
-        });
-        return true;
-      };
-      // Edit in place (Leo, 19 Nov, "C" of the preset editor page): a held or right-clicked row turns editable where it
-      // is, on soft grey, no form and no boxes. The name is plain text (7 letters just stop; "6/7" shows near the end),
-      // the prompt under it unfolds to its full length and grows as you type, a muted "delete" sits at the row's end
-      // (no confirm: "deleted · undo" stands in its place for 4 s). Enter in the name goes to the prompt, Enter in the
-      // prompt saves (Shift+Enter is a new line), Escape or a tap anywhere else cancels. "+ add" opens an empty row the
-      // same way, at the end. Phones: the row is kept in view above the keyboard, inside the sheet's list.
-      /** @type {{ line: HTMLElement, close: () => void } | null} */
-      let editing = null;
-      const keepInView = (line) => {
-        if (!line.isConnected) return;
-        const m = menu.getBoundingClientRect();
-        const r = line.getBoundingClientRect();
-        const vv = window.visualViewport;
-        const bottom = Math.min(m.bottom, vv ? vv.offsetTop + vv.height : innerHeight);
-        if (r.bottom > bottom) menu.scrollTop += r.bottom - bottom + 4;
-        else if (r.top < m.top) menu.scrollTop -= m.top - r.top;
-      };
-      const editRow = (line, i, focus = true) => {
-        if (editing?.line === line) return null;
-        editing?.close();
-        const fresh = i >= LIST.length;
-        const a = LIST[i] || { name: '', prompt: '' };
-        const kept = /** @type {HTMLElement[]} */ ([...line.children]); // hidden while edited: a hold's touch still ends on it
-        for (const k of kept) k.hidden = true;
-        line.classList.add('act-edit');
-        const name = /** @type {HTMLInputElement} */ (el('input', { class: 'nm', maxlength: String(NAME_MAX), placeholder: 'name', 'aria-label': 'name', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', enterkeyhint: 'next' }));
-        const cnt = el('span', { class: 'cnt', 'aria-live': 'polite' });
-        const del = btn('delete', { class: 'del' });
-        del.hidden = fresh;
-        const prompt = /** @type {HTMLTextAreaElement} */ (el('textarea', { class: 'p', rows: '1', maxlength: '300', placeholder: 'what the agent does', 'aria-label': 'prompt', enterkeyhint: 'done' }));
-        const why = el('span', { class: 'why', role: 'status' });
-        const fields = el('div', { class: 'act-fields' });
-        fields.append(name, cnt, del, prompt, el('span', { class: 'k' }, coarse ? 'return saves · tap outside cancels' : 'Enter saves · Esc cancels'), why);
-        line.append(fields);
-        name.value = a.name;
-        prompt.value = a.prompt;
-        const count = () => (cnt.textContent = name.value.length >= NAME_MAX - 1 ? `${name.value.length}/${NAME_MAX}` : '');
-        const fit = () => {
-          prompt.style.height = 'auto';
-          prompt.style.height = `${prompt.scrollHeight}px`;
-          keepInView(line);
-        };
-        name.addEventListener('input', () => ((why.textContent = ''), count()));
-        prompt.addEventListener('input', () => ((why.textContent = ''), fit()));
-        const commit = () => {
-          const next = [...LIST];
-          next[i] = { name: name.value.trim(), prompt: prompt.value.trim() };
-          if (fresh && !next[i].name && !next[i].prompt) return close();
-          if (!fresh && next[i].name === a.name && next[i].prompt === a.prompt) return close();
-          save(next, why);
-        };
-        del.addEventListener('click', async () => {
-          ACT_GONE = { i, a, until: Date.now() + 4000 };
-          if (!(await save(LIST.filter((_, j) => j !== i), why))) ACT_GONE = null;
-        });
-        fields.addEventListener('keydown', (e) => {
-          if (e.isComposing) return;
-          if (e.key === 'Escape') {
-            e.preventDefault();
-            e.stopPropagation();
-            close();
-          } else if (e.key === 'Enter' && e.target === name) {
-            e.preventDefault();
-            prompt.focus();
-          } else if (e.key === 'Enter' && e.target === prompt && !e.shiftKey) {
-            e.preventDefault();
-            commit();
-          }
-        });
-        fields.addEventListener('focusin', () => requestAnimationFrame(() => keepInView(line)));
-        const vv = window.visualViewport;
-        const onView = () => keepInView(line);
-        vv?.addEventListener('resize', onView);
-        // A tap anywhere else cancels, and is only that: a tap on another row (or done, + add) doesn't also use it.
-        const eat = (e) => (e.preventDefault(), e.stopPropagation());
-        const outside = (e) => {
-          if (e.composedPath().includes(line)) return;
-          close();
-          if (!e.composedPath().includes(menu)) return;
-          menu.addEventListener('click', eat, { capture: true, once: true });
-          setTimeout(() => menu.removeEventListener('click', eat, true), 800);
-        };
-        document.addEventListener('pointerdown', outside, true);
-        function close() {
-          if (editing?.line !== line) return;
-          editing = null;
-          document.removeEventListener('pointerdown', outside, true);
-          vv?.removeEventListener('resize', onView);
-          if (fresh) return void line.remove();
-          fields.remove();
-          line.classList.remove('act-edit');
-          for (const k of kept) k.hidden = false;
-        }
-        editing = { line, close };
-        count();
-        requestAnimationFrame(fit);
-        if (focus) name.focus();
-        return name;
-      };
-      // Growing sheet (Leo, 19 Nov, "c"): "…" grows the line itself into the whole list, in the same sheet or box, the
-      // text field staying where it is below it. Each row is the action's name over its prompt on one muted line, tap =
-      // use it; holding it (450 ms) or right-clicking it edits it in place, no pencil (Leo, 19 Nov: "i dont like pencil remove it");
-      // "+ add" is the last row, "done" (or "…" again) folds it back to the line. Until you have edited once, the bottom
-      // line says how, muted, in the room between "+ add" and "done" (so nothing moves when it goes).
-      function fill() {
-        editing?.close();
-        menu.replaceChildren();
-        const list = el('div');
-        for (const i of LIST.keys()) {
-          const a = LIST[i];
-          const line = el('div', { class: 'act' });
-          const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
-          use.append(el('b', {}, a.name), el('span', {}, a.prompt));
-          let held = false; // a hold opened the editor: the click that follows the release is not a use
-          use.addEventListener('click', () => (held ? (held = false) : (openMenu(false, true), chips[i].click())));
-          line.append(use);
-          if (mayEdit) {
-            /** @type {HTMLInputElement | null} */
-            let focusOnLift = null; // a finger's hold: the keyboard comes up on the lift (iOS raises it only for a touch)
-            const edit = (focus) => {
-              if (!line.isConnected) return;
-              store.set('lab-act-edited', '1');
-              const name = editRow(line, i, focus);
-              if (name && !focus) focusOnLift = name;
-            };
-            use.addEventListener('contextmenu', (e) => (e.preventDefault(), (held = true), edit(e.pointerType !== 'touch' && !coarse)));
-            /** @type {ReturnType<typeof setTimeout> | undefined} */
-            let t;
-            let at = [0, 0];
-            const stop = () => clearTimeout(t);
-            use.addEventListener('pointerdown', (e) => {
-              if (e.button) return;
-              held = false;
-              focusOnLift = null;
-              at = [e.clientX, e.clientY];
-              stop();
-              t = setTimeout(() => ((held = true), edit(e.pointerType === 'mouse')), 450);
-            });
-            use.addEventListener('pointermove', (e) => Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 8 && stop());
-            for (const k of ['pointercancel', 'pointerleave']) use.addEventListener(k, stop);
-            const lift = () => {
-              stop();
-              focusOnLift?.focus();
-              focusOnLift = null;
-            };
-            use.addEventListener('pointerup', lift);
-            use.addEventListener('touchend', lift);
-          }
-          list.append(line);
-        }
-        // Just deleted: "deleted · undo" stands in its place for 4 s; undo puts it back where it was.
-        const g = ACT_GONE && ACT_GONE.until > Date.now() ? ACT_GONE : null;
-        if (g) {
-          const line = el('div', { class: 'act gone' });
-          const why = el('span', { class: 'why', role: 'status' });
-          const undo = quiet(btn('undo', { class: 'undo' }));
-          undo.addEventListener('click', () => {
-            if (ACT_GONE !== g) return;
-            ACT_GONE = null;
-            const next = [...LIST];
-            next.splice(Math.min(g.i, next.length), 0, g.a);
-            save(next, why);
-          });
-          line.append(el('span', {}, 'deleted ·'), undo, why);
-          list.insertBefore(line, list.children[g.i] || null);
-          setTimeout(() => line.remove(), g.until - Date.now());
-        }
-        const foot = el('div', { class: 'act-foot' });
-        if (mayEdit) {
-          const add = btn('+ add', { class: 'add' });
-          add.addEventListener('click', () => {
-            const line = el('div', { class: 'act' });
-            list.insertBefore(line, foot);
-            editRow(line, LIST.length);
-          });
-          foot.append(add);
-          if (!store.get('lab-act-edited')) foot.append(el('span', { class: 'act-hint' }, coarse ? 'hold to edit' : 'right-click to edit'));
-        }
-        const fold = quiet(btn('done', { class: 'fold' }));
-        fold.addEventListener('click', () => openMenu(false));
-        foot.append(fold);
-        list.append(foot);
-        menu.append(list);
+    // Your list, in its order: as many chips as fit on one line (measured), then "…" when some don't. "…" grows the line
+    // into the whole list (tap = use it, "done" or "…" again folds it back). The list itself is set in labit.json or your
+    // settings.json (`actions`, docs/settings.md): nothing on the page edits it.
+    const menu = el('div', { class: 'acts', hidden: '' });
+    const dots = el('button', { type: 'button', 'data-k': '…', 'aria-label': 'more actions', 'aria-expanded': 'false' }, '…');
+    const chips = LIST.map(chip);
+    let shown = LIST.length;
+    const quiet = (b) => (b.addEventListener('mousedown', (e) => e.preventDefault()), b);
+    const btn = (text, attrs = {}) => el('button', { type: 'button', ...attrs }, text);
+    // Each row is the action's name over its prompt on one muted line.
+    function drawMenu() {
+      menu.replaceChildren();
+      const list = el('div');
+      for (const i of LIST.keys()) {
+        const a = LIST[i];
+        const line = el('div', { class: 'act' });
+        const use = quiet(btn('', { class: 'use', 'data-act': a.name, title: a.prompt }));
+        use.append(el('b', {}, a.name), el('span', {}, a.prompt));
+        use.addEventListener('click', () => (openMenu(false, true), chips[i].click()));
+        line.append(use);
+        list.append(line);
       }
-      // The height eases from the line's to the list's (and back) over --_t-base, none with reduced motion; the sheet sits on
-      // the bottom on a phone, so it grows upward, and the page under it never moves.
-      let anim = null;
-      const fit = (from, to, then) => {
-        anim?.cancel();
-        anim = null;
-        if (still.matches || !from || !to || from === to) return void then?.();
-        anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms('base'), easing: ease('out') });
-        anim.onfinish = () => ((anim = null), then?.());
-      };
-      let lineH = 0; // the line's height when it grew, to fold back to
-      const openMenu = (open, now = false) => {
-        if (open === !menu.hidden) return;
-        dots.setAttribute('aria-expanded', String(open));
-        if (!open) {
-          const shut = () => ((menu.hidden = true), (row.hidden = false));
-          return now ? shut() : fit(menu.offsetHeight, lineH, shut);
-        }
-        lineH = row.offsetHeight;
-        fill();
-        row.hidden = true;
-        menu.hidden = false;
-        if (!now) fit(lineH, menu.offsetHeight);
-      };
-      quiet(dots).addEventListener('click', () => {
-        const now = dots.dataset.still === '1';
-        delete dots.dataset.still;
-        openMenu(menu.hidden, now);
-      });
-      menu.addEventListener('keydown', (e) => e.key === 'Escape' && !(/** @type {Element} */ (e.target)).closest('.act-edit') && (e.stopPropagation(), openMenu(false)));
-      row.append(...chips, dots);
-      let tries = 0;
-      const measure = () => {
-        if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
-        row.after(menu);
-        const over = () => row.scrollWidth > row.clientWidth + 1;
-        while (over() && shown) chips[--shown].remove();
-        dots.hidden = shown === LIST.length && !mayEdit;
-        [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
-      };
-      queueMicrotask(measure);
+      const foot = el('div', { class: 'act-foot' });
+      const fold = quiet(btn('done', { class: 'fold' }));
+      fold.addEventListener('click', () => openMenu(false));
+      foot.append(fold);
+      list.append(foot);
+      menu.append(list);
     }
+    // The height eases from the line's to the list's (and back) over --_t-base, none with reduced motion; the sheet sits on
+    // the bottom on a phone, so it grows upward, and the page under it never moves.
+    let anim = null;
+    const fit = (from, to, then) => {
+      anim?.cancel();
+      anim = null;
+      if (still.matches || !from || !to || from === to) return void then?.();
+      anim = menu.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: ms('base'), easing: ease('out') });
+      anim.onfinish = () => ((anim = null), then?.());
+    };
+    let lineH = 0; // the line's height when it grew, to fold back to
+    const openMenu = (open, now = false) => {
+      if (open === !menu.hidden) return;
+      dots.setAttribute('aria-expanded', String(open));
+      if (!open) {
+        const shut = () => ((menu.hidden = true), (row.hidden = false));
+        return now ? shut() : fit(menu.offsetHeight, lineH, shut);
+      }
+      lineH = row.offsetHeight;
+      drawMenu();
+      row.hidden = true;
+      menu.hidden = false;
+      if (!now) fit(lineH, menu.offsetHeight);
+    };
+    quiet(dots).addEventListener('click', () => openMenu(menu.hidden));
+    menu.addEventListener('keydown', (e) => e.key === 'Escape' && (e.stopPropagation(), openMenu(false)));
+    row.append(...chips, dots);
+    let tries = 0;
+    const measure = () => {
+      if (!row.isConnected || !row.clientWidth) return void (tries++ < 10 && requestAnimationFrame(measure));
+      row.after(menu);
+      const over = () => row.scrollWidth > row.clientWidth + 1;
+      while (over() && shown) chips[--shown].remove();
+      dots.hidden = shown === LIST.length;
+      [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
+    };
+    queueMicrotask(measure);
     // ⌥ + 1…4 (by the key's place, so Option's own characters don't matter) runs the nth button; holding ⌥ shows the numbers.
     [...row.children].forEach((b, n) => b.setAttribute('data-n', String(n + 1)));
     const alt = (on) => row.classList.toggle('alt', on);
@@ -1957,11 +1759,8 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     pin.style.left = `${zone ? zone.left : left}px`;
     pin.style.top = `${zone ? zone.top : top}px`;
   };
-  // ...and held there by the browser (pinhold.ts): tied to its element, so scrolling needs no script. True when it is held.
   // A card or box tied to its pin by the browser (thread.ts tieToPin): on a computer; phones keep their sheets.
   const nativeTie = () => !sheetMode.matches;
-  // Held, its place is the browser's: the script writes none (it would make the next pin's reading lay the page out again);
-  // a drawing still gets its size.
   // A board pin's frame box, read with the other pins' elements before any pin is written (pinhold.ts readPins).
   const frameBox = (a) => (a.frame && a.fx !== undefined ? /** @type {any} */ (window).__labBoard?.box?.(a.frame) : null) || null;
   const placePin = (pin, c, zone, left, top, moved) => {
@@ -2072,12 +1871,13 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       document.body.append(host);
       fit();
     }
-    if (!fonts.isConnected) document.head.append(fonts);
+    if (!pageStyle.isConnected) document.head.append(pageStyle);
     if (!pinCursorStyle.isConnected) document.head.append(pinCursorStyle);
     S.routed?.(); // the section bar (sections.ts)
     if (pageNow() === S.page) return;
     S.page = pageNow();
     S.seen = readSeen();
+    pass = null;
     syncReads();
     S.comments = [];
     S.draft = null;
@@ -2096,21 +1896,19 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   });
   if ('ResizeObserver' in window) new ResizeObserver(reflow).observe(document.body);
 
-  // Font: the system's own (San Francisco, Segoe UI, Roboto…), so nothing downloads. A site can pick its own with
-  // --lab-font on the host element, data-font="Name" (a font the page already loads) or data-font-url (a woff2).
-  // @font-face is ignored inside a shadow root, so a data-font-url face goes in the document.
-  const fonts = document.createElement('style');
+  // The rules that act on the page itself (the pinning cursor, a drag's no-select, a sheet's overscroll), not on the
+  // widget: a stylesheet in the document's head, since the widget's own live in its shadow root. The font is the system's
+  // own, so nothing downloads.
+  const pageStyle = document.createElement('style');
 
   // A comment pin as the pointer over everything you can comment on (links and controls keep theirs): the white
   // teardrop with a +, clicking at its point. Holding Shift gives the text cursor back for selecting words.
   // It looks like your own pin: the white teardrop with your initial (a + before you've given a name). It points (bottom
   // left) where the click lands.
-  // Drawn once into PNGs (1x and 2x): browsers re-decode SVG pointers when the pointer changes, which flickers (Safari
-  // most); a PNG pointer stays put. The SVG one shows only for the moment before the PNGs are ready.
   const pinCursorStyle = document.createElement('style');
   // The pointer itself is drawn (an element styled with CSS that follows the mouse), not an image: so it changes
-  // smoothly, and fading out where the system pointer takes over (links,
-  // fields, the widget, Shift). Mice only; touch and pens keep what they had.
+  // smoothly, and fades out where the system pointer takes over (links, fields, the widget, Shift). Mice only; touch and
+  // pens keep what they had.
   const ptr = el('div', { class: 'ptr', 'aria-hidden': 'true' });
   ptr.append(el('span', { class: 'ini' }, '+'));
   root.append(ptr);
@@ -2168,16 +1966,16 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
   }
   // Computers, comments on: a click or drag doesn't select the page's text; hold Shift to select (and quote) words.
   // Fields and editable text stay selectable.
-  fonts.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
+  pageStyle.textContent += `@media (pointer: fine) { html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]), html.lab-pinning:not(.lab-shift, .lab-lit) body > :not([data-lab-comments]) :not(input, textarea, select, [contenteditable], [contenteditable] *) { -webkit-user-select: none; user-select: none; } }`;
   bindKeys(W);
-  fonts.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
+  pageStyle.textContent += 'html.lab-dragging, html.lab-dragging * { user-select: none !important; -webkit-user-select: none !important; cursor: crosshair !important; }';
   // While a sheet is open, a swipe down is the sheet's, not the browser's pull-to-refresh.
-  fonts.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
+  pageStyle.textContent += 'html.lab-sheet, html.lab-sheet body { overscroll-behavior-y: none; }';
   // The agent's ring draws its arc in (lab C2): an arc length that can animate has to be registered on the page itself.
-  fonts.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
+  pageStyle.textContent += '@property --lab-arc { syntax: "<percentage>"; inherits: false; initial-value: 66%; }';
   // The room a phone's sheet made below the page's end (see goTo) stays after the sheet closes, so the page doesn't jump
   // up at the end of the slide; it shrinks away as you scroll back up.
-  fonts.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
+  pageStyle.textContent += "html.lab-room body::after { content: ''; display: block; height: var(--lab-room, 0px); }";
   addEventListener('scroll', () => {
     const de = document.documentElement;
     const had = parseFloat(de.style.getPropertyValue('--lab-room')) || 0;
@@ -2188,29 +1986,28 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     if (!room) de.classList.remove('lab-room');
   }, { passive: true });
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
-  fonts.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
+  pageStyle.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
-  fonts.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
+  pageStyle.textContent += `html.lab-pinning body, html.lab-pinning body * { -webkit-touch-callout: none; }`;
   // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch
   // for its selection, and the lift that lets the box open the keyboard would never come. Only while a finger is down
   // (lab-press): Safari paints the quoted words' green (::highlight) over whole blocks of text that can't be selected,
   // so with the page unselectable all the time an open comment tinted half the page (iOS 27 simulator, 17 Nov).
   // Nor the start of a drag: iOS lifts a held link or image to drag it, which cancels the touch the same way.
-  fonts.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
+  pageStyle.textContent += `@media (pointer: coarse) { html.lab-pinning.lab-press body > :not([data-lab-comments]) { -webkit-user-select: none; user-select: none; } html.lab-pinning body > :not([data-lab-comments]), html.lab-pinning body > :not([data-lab-comments]) * { -webkit-user-drag: none; } }`;
 
   const start = () => {
-    document.head.append(fonts, pinCursorStyle);
+    document.head.append(pageStyle, pinCursorStyle);
     refreshPinCursor();
     document.body.append(host);
     fit();
     // The page's own selection while commenting, and the quoted words of an open text comment.
     // A soft green, so the quoted words stay readable in the page's own colour, on light and dark pages.
     const paint = 'background-color: rgba(52, 199, 89, .3); color: inherit;';
-    fonts.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
+    pageStyle.textContent += `html.lab-pinning ::selection { ${paint} } ::highlight(lab-quote) { ${paint} }`;
     bindActions(W); // data-lab-action buttons leave a pin the agent acts on
     load();
     startSections(); // the section bar: what is new or updated on the page since you read it
-    for (const name of flagNames) if (flag(name)) startFlag(name); // (lib/flags.ts)
     scanForFramework();
     if (!S.components) {
       addEventListener('load', scanForFramework, { once: true });
