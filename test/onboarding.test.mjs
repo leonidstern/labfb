@@ -9,6 +9,8 @@ import { LAB, claimPort, tmp, rm, sleep, cli } from './harness.mjs';
 const DIR = fs.realpathSync(tmp('onboard'));
 fs.mkdirSync(path.join(DIR, 'src'));
 fs.writeFileSync(path.join(DIR, 'package.json'), JSON.stringify({ name: 'app', scripts: { dev: 'vite' } }));
+// What a browser asks a page with (a bare fetch is no page load to a lab in front of a dev server).
+const PAGE = { accept: 'text/html', 'sec-fetch-dest': 'document' };
 const kids = [];
 after(() => {
   kids.forEach((k) => k.kill());
@@ -47,12 +49,12 @@ test('in a project, a bare run finds the dev server running in that folder', { s
   let html = '';
   for (let i = 0; i < 50 && !html; i++) {
     try {
-      html = await (await fetch(`http://localhost:${labPort}/`)).text();
+      html = await (await fetch(`http://localhost:${labPort}/`, { headers: PAGE })).text();
     } catch {
       await sleep(100);
     }
   }
-  assert.match(out, new RegExp(`dev server for this project on :${devPort}`), out);
+  assert.match(out, new RegExp(`fronting your dev server on :${devPort}`), out);
   assert.match(html, /dev page/);
   assert.match(html, /_lab\/comments\.js/);
 });
@@ -72,7 +74,7 @@ test('a folder with no index.html at the top lists its pages, not its folders, a
   let html = '';
   for (let i = 0; i < 50 && !html; i++) {
     try {
-      html = await (await fetch(`http://localhost:${port}/`)).text();
+      html = await (await fetch(`http://localhost:${port}/`, { headers: PAGE })).text();
     } catch {
       await sleep(100);
     }
@@ -201,4 +203,71 @@ test('a newer version on npm is announced as the lab starts', async () => {
 test('the npm package ships the widget and the lab screens\' stylesheet', () => {
   const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   for (const f of ['public/_lab/comments.js.br', 'public/_lab/lab.css']) assert.ok(pkg.files.includes(f), `${f} is in package.json files`);
+});
+
+// A project with HTML files of its own (Vite's index.html, webpack's template) is still a project with a dev server.
+const project = (name, files, pkg) => {
+  const dir = fs.realpathSync(tmp(name));
+  for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), text);
+  if (pkg) fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg));
+  return dir;
+};
+const startLab = async (dir, port) => {
+  const lab = spawn(process.execPath, [LAB, '--no-open', '--port', String(port)], { cwd: dir });
+  kids.push(lab);
+  let out = '';
+  lab.stdout.on('data', (d) => (out += d));
+  lab.stderr.on('data', (d) => (out += d));
+  let html = '';
+  for (let i = 0; i < 50 && !html; i++) {
+    try {
+      html = await (await fetch(`http://localhost:${port}/`, { headers: PAGE })).text();
+    } catch {
+      await sleep(100);
+    }
+  }
+  return { html, out: () => out };
+};
+const standIn = async (dir, port) => {
+  const dev = spawn(process.execPath, ['-e', `require('http').createServer((q,s)=>{s.setHeader('content-type','text/html');s.end('<h1>framework page</h1>')}).listen(${port},'127.0.0.1')`], { cwd: dir });
+  kids.push(dev);
+  await sleep(400);
+};
+
+for (const [what, pkg] of [
+  ['a dev script', { name: 'app', scripts: { dev: 'vite' } }],
+  ['only a framework in its dependencies', { name: 'app', devDependencies: { vite: '^7.0.0' } }],
+]) {
+  test(`a project with an index.html and ${what}, and a dev server running in it: the lab fronts the dev server, not the raw index.html`, { skip: !hasLsof && 'needs lsof' }, async () => {
+    const dir = project('onboard-html', { 'index.html': '<!doctype html><title>raw</title><h1>raw source</h1><script type="module" src="/src/main.js"></script>' }, pkg);
+    const devPort = claimPort(5700, 90);
+    await standIn(dir, devPort);
+    const { html, out } = await startLab(dir, claimPort(5800, 90));
+    assert.match(out(), new RegExp(`fronting your dev server on :${devPort}`), out());
+    assert.match(html, /framework page/);
+    assert.doesNotMatch(html, /raw source/);
+    assert.match(html, /_lab\/comments\.js/);
+    rm([dir]);
+  });
+}
+
+test('a project with an index.html and a dev script whose server is not running is served as pages, and says so', { skip: !hasLsof && 'needs lsof' }, async () => {
+  const dir = project('onboard-nodev', { 'index.html': '<!doctype html><title>raw</title><h1>raw source</h1>' }, { name: 'app', scripts: { dev: 'vite' } });
+  const { html, out } = await startLab(dir, claimPort(5800, 90));
+  assert.match(html, /raw source/);
+  assert.match(out(), /has a dev script but no dev server is running here/, out());
+  assert.match(out(), /npm run dev/);
+  rm([dir]);
+});
+
+test('a plain folder of pages is served as pages even with a server running in it, and one with a package.json but no dev script or framework too', { skip: !hasLsof && 'needs lsof' }, async () => {
+  const devPort = claimPort(5700, 90);
+  for (const pkg of [null, { name: 'site', scripts: { build: 'tsc' }, dependencies: { lodash: '1' } }]) {
+    const dir = project('onboard-static', { 'index.html': '<!doctype html><title>plain</title><h1>plain page</h1>' }, pkg);
+    await standIn(dir, devPort + (pkg ? 1 : 0));
+    const { html, out } = await startLab(dir, claimPort(5800, 90));
+    assert.match(html, /plain page/);
+    assert.doesNotMatch(out(), /fronting your dev server/);
+    rm([dir]);
+  }
 });
