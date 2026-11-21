@@ -659,7 +659,7 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
 [hidden] { display: none !important; }
 /* Phones: sheets float as cards, as iOS 27's do (Leo, 16 Nov): 8 px in from the screen's sides and bottom (from the
    keyboard's top when it's up), round at every corner, a soft shadow, and the page behind not dimmed (a tap there still
-   closes it). A tapped sheet grows out of what you tapped (--lab-from, set in render) and shrinks back into it. */
+   closes it). A tapped sheet rises in from the bottom (--lab-from still sets where its small scale pivots). */
 @media (pointer: coarse) and (max-width: 560px), (pointer: coarse) and (max-height: 500px) {
   :host { --_gap: 8px; --_card-r: 30px; }
   .card, .float, .list, .sw-box { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
@@ -676,7 +676,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .scrim { background: transparent; }
   .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in var(--_t-slow) var(--_ease); }
 }
-@keyframes lab-card-in { from { transform: scale(.3); opacity: 0; } 40% { opacity: 1; } }
+/* A sheet rises into place from the screen's edge, nearly its own size: it used to grow from 30% at the chip, and for those
+   frames the pill, the empty page and a small ghost of the sheet showed behind it (Leo, 21 Nov: "weird square placeholder
+   behind", "menu pill weirdly glitching behind window"). */
+@keyframes lab-card-in { from { transform: translateY(28px) scale(.97); opacity: 0; } 60% { opacity: 1; } }
 /* Feedback on an agent's answer (src/widget/thread.ts): the button under the answer, the bar over the reply box while
    writing it, and the rule the agent made of it, on the answer that saved it. */
 .msg .rule { display: block; margin-top: 6px; font-size: 12px; opacity: .8; letter-spacing: 0; line-height: 1.35; }
