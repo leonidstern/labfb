@@ -9,6 +9,7 @@
 // nothing else on it, and own() below puts the view over all of it (no half, nothing is under it). That is for a board
 // with no page of its own to be over; one that is about a page goes there (the lab redirects), so it has one set of pins.
 import { mountBoard } from './mount.ts';
+import * as move from '../widget/sheetmove.ts';
 
 type Opts = { page: string; of?: string; push?: boolean; onClose?: () => void; own?: boolean }; // own: the board's own address (own() below)
 type Open = { name: string; view: HTMLElement; destroy: () => void; onClose?: () => void; restoration: ScrollRestoration; pushed: boolean };
@@ -20,7 +21,7 @@ let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the 
 // the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
 // --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-:host{all:initial!important;opacity:var(--bv-o,1)!important;translate:var(--bv-y,none)!important;transition:translate var(--bv-t,0ms) cubic-bezier(.2,.8,.2,1)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+:host{all:initial!important;opacity:var(--bv-o,1)!important;translate:var(--bv-y,none)!important;transition:translate var(--bv-t,0ms) var(--bv-e,cubic-bezier(.32,.72,0,1))!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
 .bv-bar{position:relative;flex:none;touch-action:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
 .bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
@@ -52,6 +53,9 @@ const saveSize = (page: string, v: number) => {
 };
 const nameInHash = () => /^#board=([a-z0-9][a-z0-9_-]*)/i.exec(location.hash)?.[1] || '';
 const moved = () => dispatchEvent(new Event('lab-board-moved')); // the widget draws the pins again (the board's and the page's under it)
+// The view came to rest after a slide (the board read its box again, board.resized): every pin on the board is placed
+// again where its frame now is, as after a camera move (a plain redraw kept a pin where it was put mid-slide, off the screen).
+const rested = () => dispatchEvent(new CustomEvent('lab-board-moved', { detail: { camera: true, box: true } }));
 // The page scrolled under a half view: the board's pins are held to the screen, the page's own scroll with it, so the
 // widget only hides or shows those the view's edge crossed (no redraw per scroll step: the pins flickered; Leo, 19 Nov).
 const scrolled = () => dispatchEvent(new CustomEvent('lab-board-moved', { detail: { scroll: true } }));
@@ -124,28 +128,30 @@ export function show(name: string, o: Opts) {
     on.setPointerCapture?.(e.pointerId);
     let frame = 0;
     let below = 0; // px pulled past the least height
-    let last = { y: e.clientY, t: e.timeStamp, v: 0 };
-    const move = (m: PointerEvent) => {
+    const moves = [{ t: e.timeStamp, y: e.clientY }];
+    const pull = (m: PointerEvent) => {
       const want = (innerHeight - m.clientY) / innerHeight;
       size = Math.max(MIN, Math.min(1, want));
       below = Math.max(0, (MIN - want) * innerHeight);
-      const dt = m.timeStamp - last.t;
-      if (dt > 0) last = { y: m.clientY, t: m.timeStamp, v: 0.6 * ((m.clientY - last.y) / dt) + 0.4 * last.v };
-      frame ||= requestAnimationFrame(() => ((frame = 0), paintSize(), view.style.setProperty('--bv-y', `0 ${below}px`)));
+      moves.push({ t: m.timeStamp, y: m.clientY });
+      while (moves.length > 2 && m.timeStamp - moves[0].t > 200) moves.shift();
+      frame ||= requestAnimationFrame(() => ((frame = 0), paintSize(), view.style.setProperty('--bv-t', '0ms'), view.style.setProperty('--bv-y', `0 ${below}px`)));
     };
     const up = (u: PointerEvent) => {
-      on.removeEventListener('pointermove', move);
+      on.removeEventListener('pointermove', pull);
       on.removeEventListener('pointerup', up);
       on.removeEventListener('pointercancel', up);
       cancelAnimationFrame(frame);
       paintSize();
-      if (u.type === 'pointerup' && (below > 48 || (last.v > 0.6 && size <= MIN + 0.05))) return void close(last.v);
-      if (below) setTimeout(() => ((at = view.getBoundingClientRect()), moved()), slide(view, true, 0, 200) + 20);
+      const v = move.speedOf(moves, u.timeStamp);
+      // At its least height, let go as the comment drawer is (move.goes): it goes on down at the finger's speed and closes.
+      if (u.type === 'pointerup' && size <= MIN + 0.01 && move.goes(below, v, view.offsetHeight)) return void close(Math.max(0, v));
+      if (below) setTimeout(() => ((at = view.getBoundingClientRect()), board.resized(), rested()), slide(view, true, Math.max(0, -v)) + 20);
       if (size > 0.97) size = 1;
       paintSize();
       saveSize(o.page, size);
     };
-    on.addEventListener('pointermove', move);
+    on.addEventListener('pointermove', pull);
     on.addEventListener('pointerup', up);
     on.addEventListener('pointercancel', up);
   };
@@ -179,7 +185,7 @@ export function show(name: string, o: Opts) {
   // which an animation or a transition can't beat, so --bv-o is stepped here, one frame at a time.
   // It comes up from the bottom, as the comment drawer does (not the board's own address: that is the whole page).
   // Where it is (at) and its pins are read again once it rests: a move is no resize, so the watch below misses it.
-  if (!o.own && !matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(() => cur?.view === view && ((at = view.getBoundingClientRect()), moved()), slide(view, true) + 20);
+  if (!o.own && !matchMedia('(prefers-reduced-motion: reduce)').matches) setTimeout(() => cur?.view === view && ((at = view.getBoundingClientRect()), board.resized(), rested()), slide(view, true) + 20);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue('--lab-t-calm')); // lab.css is served minified: .12s
     const d = v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : 120;
@@ -212,20 +218,33 @@ function teardown() {
 }
 
 /** Close the view: back, when it was opened here (the entry it added goes), else the address loses its #board. */
-// The view's slide: up into place (in), or down off the screen, at a finger's speed (px/ms) when it was flicked.
-// No move left on it once it rests (a moved box holds what is fixed inside it, the board's own layers).
-function slide(view: HTMLElement, into: boolean, speed = 0, ms = into ? 280 : 0) {
-  const way = view.getBoundingClientRect().height + 8;
-  if (!into) ms = Math.round(Math.min(280, Math.max(120, speed > 0.3 ? way / speed : 240)));
-  if (into && !view.style.getPropertyValue('--bv-y')) {
-    view.style.setProperty('--bv-y', `0 ${way}px`);
+// The view's slide, by the comment drawer's rules (../widget/sheetmove.ts): up into place (in: from below the screen, or
+// back from where a finger left it, at `speed` px/ms toward its place), or down off the screen at the finger's speed
+// (a tap on close: from rest, easing in). Its length in ms. No move is left on it once it rests (a moved box holds what
+// is fixed inside it, the board's own layers).
+function slide(view: HTMLElement, into: boolean, speed = 0) {
+  const [quick, base, slow] = ['quick', 'base', 'slow'].map(token);
+  const h = view.getBoundingClientRect().height;
+  const off = /\s([\d.]+)px$/.exec(view.style.getPropertyValue('--bv-y'))?.[1];
+  const now = off ? parseFloat(off) : into ? h + 8 : 0; // how far down it is now
+  if (into && !off) {
+    view.style.setProperty('--bv-t', '0ms');
+    view.style.setProperty('--bv-y', `0 ${now}px`);
     void view.offsetHeight;
   }
+  const way = into ? now : h + 8 - now;
+  const [ms, curve] = into ? move.glide(way, speed, slow, quick) : speed > 0 ? move.carry(way, speed, slow, quick) : [base, 'cubic-bezier(.4, 0, 1, 1)'];
+  view.style.setProperty('--bv-e', curve);
   view.style.setProperty('--bv-t', `${ms}ms`);
-  view.style.setProperty('--bv-y', `0 ${into ? 0 : way}px`);
-  if (into) setTimeout(() => (view.style.removeProperty('--bv-t'), view.style.removeProperty('--bv-y')), ms);
+  view.style.setProperty('--bv-y', `0 ${into ? 0 : h + 8}px`);
+  if (into) setTimeout(() => ['--bv-t', '--bv-y', '--bv-e'].forEach((k) => view.style.removeProperty(k)), ms);
   return ms;
 }
+// A motion token of lab.css (--lab-t-quick, -base, -slow) in ms, as the comment widget has them.
+const token = (k: string) => {
+  const v = /^\s*([\d.]+)(m?s)\s*$/.exec(getComputedStyle(document.documentElement).getPropertyValue(`--lab-t-${k}`));
+  return v ? parseFloat(v[1]) * (v[2] === 's' ? 1000 : 1) : ({ quick: 120, base: 200, slow: 300 } as Record<string, number>)[k];
+};
 let closing = false;
 /** Close the view: it slides down, then back, when it was opened here (the entry it added goes), else the address loses
  * its #board. The browser's own back takes it down at once (its own gesture is the motion). */
@@ -276,17 +295,19 @@ export function own(name: string) {
 
 // A board as a section of the page (<lab-board name>, put there by +board, src/widget/boardcam.ts): a strip of what is on it, the page itself
 // left out. A tap opens the board over the page. Outside the lab the tag is an empty element, and shows nothing.
-const STRIP = `:host{display:block!important;margin:16px 0!important;font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1d1d1f;cursor:pointer}
-.box{border:1px solid rgba(0,0,0,.1);border-radius:12px;padding:10px;background:rgba(52,199,89,.05)}
+// In the page's own colours (its text colour; borders and fills from it), so it reads on a dark page as on a light one;
+// straight under <body> it keeps off the screen's edges (in the shadow: what is on <lab-board> itself is the file's).
+const STRIP = `:host{display:block!important;box-sizing:border-box!important;margin:16px 0!important;font:13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:inherit;cursor:pointer}
+.edge{margin:0 16px}
+.box{border:1px solid color-mix(in srgb,currentColor 16%,transparent);border-radius:12px;padding:10px;background:color-mix(in srgb,rgb(52,199,89) 7%,transparent)}
 .top{display:flex;align-items:center;gap:8px;margin:0 2px 8px}
-.top b{font-weight:600}.top span{opacity:.6;flex:1}
-.top button{font:inherit;border:0;border-radius:999px;padding:4px 11px;cursor:pointer;background:rgba(52,199,89,.16);color:rgb(36,160,70)}
+.top b{font-weight:600}.top span{opacity:.65;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.top button{font:inherit;border:0;border-radius:999px;padding:4px 11px;cursor:pointer;background:rgba(52,199,89,.18);color:inherit}
 .row{display:flex;gap:8px;overflow-x:auto;scrollbar-width:thin}
-.row>*{flex:none;height:120px;border-radius:8px;background:rgba(0,0,0,.04)}
+.row>*{flex:none;height:120px;border-radius:8px;background:color-mix(in srgb,currentColor 6%,transparent)}
 img{display:block;max-width:240px;object-fit:cover}
 .page{width:160px;padding:10px;box-sizing:border-box;overflow:hidden;opacity:.8}
-.none{opacity:.6;padding:4px 2px}
-@media (prefers-color-scheme:dark){:host{color:#e9e8e4}.box{border-color:rgba(255,255,255,.12)}.row>*{background:rgba(255,255,255,.06)}.top button{color:rgb(52,199,89)}}`;
+.none{opacity:.65;padding:4px 2px}`;
 const el = (tag: string, props: object = {}, ...kids: (Node | string)[]) => {
   const n = Object.assign(document.createElement(tag), props);
   n.append(...kids);
@@ -303,7 +324,7 @@ export const section = async (host: HTMLElement, o: { page: string; about: (name
   const said = o.about(name);
   root.replaceChildren(
     el('style', {}, STRIP),
-    el('div', { className: 'box' },
+    el('div', { className: host.parentElement === document.body ? 'box edge' : 'box' },
       el('div', { className: 'top' }, el('b', {}, 'Board'), el('span', {}, b ? `${frames.length || 'nothing'} on it${said && said !== '+board' ? ` · ${said.slice(0, 60)}` : ''}` : 'not found'), el('button', {}, 'Open')),
       frames.length ? el('div', { className: 'row' }, ...frames.map(thumb)) : el('div', { className: 'none' }, 'Open it to add pictures and pages for the agent.'),
     ),

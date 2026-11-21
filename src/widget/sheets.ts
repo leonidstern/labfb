@@ -1,4 +1,5 @@
 // Part of the comment widget (src/comments.js bundles it). Uses the widget's own parts through W, set once at startup.
+import * as move from './sheetmove.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -19,28 +20,9 @@ const scrollerIn = (e, node) =>
 // How long a sheet's transition takes to be over, with a frame or two of slack, before its inline style is cleared.
 const settled = () => W.ms('slow') + W.ms('quick') / 3;
 
-// A sheet let go carries on at the speed it had (Apple's "Designing Fluid Interfaces": a thing you drag and let go
-// continues at the finger's velocity, and nothing starts steeply for no reason). A cubic-bezier's first slope is its
-// starting speed in whole distances per duration, so each curve below is built from the release speed and the way left.
-const bez = (...n: number[]) => `cubic-bezier(${n.map((x) => +x.toFixed(3))})`;
-// To a stop `dist` px away, going `speed` px/ms toward it now (0 when it is going away, or still): [ms, curve]. Ends like
-// iOS's settle (.32, .72, 0, 1), starts at the speed; a quick throw shortens it (never past slow). At rest it starts softly.
-// The curve speeds up a little in its first frame (its start is convex), so it starts 1.2 times slower than asked for.
-function glide(dist: number, speed: number, cap = 1e9): [number, string] {
-  let ms = Math.min(cap, W.ms('slow'));
-  if (!ms || dist < 1) return [ms, 'var(--_ease-settle)'];
-  if ((speed * ms) / dist > 2.7) ms = Math.max(W.ms('quick'), (2.7 * dist) / speed); // settle's own first slope is 2.25 (2.7 / 1.2)
-  const m = (speed * ms) / dist / 1.2; // the first slope, in whole distances per duration
-  const y = Math.min(1, 0.32 * m);
-  return [ms, bez(m ? y / m : 0.32, y, 0, 1)];
-}
-// Off the screen `dist` px away, going `speed` px/ms toward it now: [ms, curve]. Keeps that speed (a steady pace, or
-// speeding up from it, as a sheet falls) and does not stop at the end; at most `cap` ms.
-function carry(dist: number, speed: number, cap: number): [number, string] {
-  const ms = Math.min(cap, Math.max(W.ms('quick'), speed > 0 ? dist / speed : cap));
-  const m = Math.min(2, (speed * ms) / dist);
-  return [ms, bez(1 / 3, m / 3, 2 / 3, (m + 1) / 3)];
-}
+// The motion's rules (sheetmove.ts, the board drawer's too), with this widget's token lengths.
+const glide = (dist: number, speed: number, cap = 1e9): [number, string] => move.glide(dist, speed, W.ms('slow'), W.ms('quick'), cap, 'var(--_ease-settle)');
+const carry = (dist: number, speed: number, cap: number) => move.carry(dist, speed, cap, W.ms('quick'));
 let leaveBar = ''; // how the bar rises as the last leave() goes (slideAway)
 
 const HELD = ['top', 'bottom', 'height', 'max-height', 'transform', 'transition', 'animation', 'pointer-events', 'opacity', 'transform-origin'];
@@ -366,13 +348,10 @@ export function swipeDown(node, close, grows = false) {
     };
     if (grows && !node.classList.contains('full') && (raw < -40 || v < -0.4)) return node.classList.contains('card') && (W.S.cardFull = true), settle(true, -vs);
     if (grows && node.classList.contains('full') && v < 1.2 && (raw > 60 || v > 0.4)) return node.classList.contains('card') && (W.S.cardFull = false), settle(false, vs);
-    // Where the sheet would come to rest if let go now, as iOS judges a throw (Apple's "Designing Fluid Interfaces":
-    // the distance plus the speed carried on at the normal deceleration, 0.998 a millisecond, so v × 499): past half
-    // its height it goes. A short quick flick closes; a slow long drag closes past halfway; a move back up never does.
-    const rest = dy + Math.max(0, v) * 499;
+    // Where it would come to rest if let go now, past half its height: it goes (move.goes, sheetmove.ts).
     // Off the screen's bottom at the sheet's own speed, in 300 ms at most (see leave); else back to where it sits (a
     // rubber band's stretch goes back the other way).
-    if (v > -0.1 && rest > h / 2) return slideAway(node, close, W.ms('slow'), Math.max(0, vs));
+    if (move.goes(dy, v, h)) return slideAway(node, close, W.ms('slow'), Math.max(0, vs));
     settle(undefined, dy > 0 ? -vs : vs);
   };
   node.addEventListener('touchend', end);
