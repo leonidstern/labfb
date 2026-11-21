@@ -186,7 +186,9 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       // Only the height, and by no more than a phone's toolbar does as the page scrolls (40 px on iOS 27): the board stays
       // where it is on the screen. Fitted again, it went through three places and ended 15 px off (21 Nov simulator).
       const bar = view.w === sizedFrom.w && Math.abs(view.h - sizedFrom.h) <= 100;
-      return go(moved || held || bar ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
+      // Held (a phone's keyboard): it stays as it is, where the hold or its glide put it. Fitted or held to its edges again
+      // here, mid-glide, it jumped 68 px and the widget drew everything again (21 Nov simulator).
+      if (!held) return go(moved || bar ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
     }
     layered = false;
     world.style.willChange = '';
@@ -213,12 +215,14 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // The camera goes to next, held to the board's edges: past an edge it just stops (Leo, 19 Nov: "remove weird bounce
   // on edge of canvas": it gave way and sprang back). pan: a move that keeps a fitted frame's focus (a phone's swipe).
   let nudging = 0; // the camera's glide to a draft pin (api.nudge)
+  let home: number | null = null; // where the camera was before that glide (api.nudgeBack takes it there again)
   let holdOff: ReturnType<typeof setTimeout> | undefined;
-  const go = (next: Cam, user = true, pan = false) => {
-    const c = clamp(next, boxes(), view);
+  const go = (next: Cam, user = true, pan = false, camOnly = false) => {
+    const c = camOnly ? next : clamp(next, boxes(), view); // a glide's steps are its own (api.nudge): held to the edges, each would jump to them
     if (user) moved = true;
+    if (user) [home, heldCam] = [null, null]; // moved by hand while a keyboard holds the board: it stays where the hand left it
     if (user && (!pan || Math.abs(c.z - cam.z) > 1e-6)) focus = false;
-    if (!user) whole = true; // the board itself changed (its box, its frames): the widget draws everything again
+    if (!user && !camOnly) whole = true; // the board itself changed (its box, its frames): the widget draws everything again
     cam = c;
     draw();
     moving();
@@ -778,7 +782,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       return { left: sx + scrollX, top: sy + scrollY, zone: null, ...(opts.clip && !inBox(sx, sy) && { clipped: true }) };
     },
     camera: () => ({ ...cam }),
-    /** The camera moves by dy screen px (the keyboard is up: a draft pin comes above its sheet); answers how far it did go (it stops at the board's edges). */
     /** While on, the view's resizes keep the board where it is on the screen instead of fitting it again (a phone's keyboard). */
     hold: (on: boolean) => {
       clearTimeout(holdOff);
@@ -794,21 +797,16 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       heldCam = null;
       holdOff = setTimeout(() => ((held = false), (camBack = null)), REST * 3); // after the last resize has rested
     },
+    /** The camera glides by dy screen px (the keyboard is up: a draft pin comes above its sheet), past the board's edges if it must. */
     nudge: (dy: number) => {
-      const from = cam.y;
-      const to = clamp({ ...cam, y: cam.y + dy / cam.z }, boxes(), view).y;
-      cancelAnimationFrame(nudging);
-      // It glides (ease in and out, longer for a longer way), not one frame (Leo, 21 Nov: "scrolling position to pin can be smoother").
-      const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.min(420, 180 + Math.abs(to - from) * cam.z * 0.5);
-      const t0 = performance.now();
-      const step = (now: number) => {
-        if (signal.aborted) return;
-        const k = ms ? Math.min(1, (now - t0) / ms) : 1;
-        go({ ...cam, y: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2) }, false, true);
-        nudging = k < 1 ? requestAnimationFrame(step) : 0;
-      };
-      step(t0);
-      return Math.round((to - from) * cam.z);
+      home ??= cam.y;
+      glide(cam.y + dy / cam.z);
+    },
+    /** …and back to where it was before; done once it is there (at once when it never left). */
+    nudgeBack: (done?: () => void) => {
+      const to = home;
+      if (to == null) return void (cancelAnimationFrame(nudging), done?.());
+      glide(to, () => ((home = null), done?.()));
     },
     selected: () => selected,
     entered: () => entered,
@@ -819,6 +817,24 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // box's corner, nothing is fitted again, no frame is woken and the widget draws nothing but what the edge crosses.
   // Once it rests the board fits again (or is held to its edges, when the camera was moved), in one step (Leo, 19 Nov:
   // "when moving size of boards its sometimes flickering weirdly on some points": it fitted and drew all of it per step).
+  // The camera's glide up or down (api.nudge): ease in and out, longer for a longer way, not one frame (Leo, 21 Nov:
+  // "scrolling position to pin can be smoother"). The camera alone: the widget moves the pins and the open box with it and
+  // draws nothing again (drawn again on each step, the box was made anew and took the cursor every frame of the glide).
+  const glide = (to: number, done?: () => void) => {
+    const from = cam.y;
+    cancelAnimationFrame(nudging);
+    const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.min(420, 180 + Math.abs(to - from) * cam.z * 0.5);
+    const t0 = performance.now();
+    const step = (now: number) => {
+      if (signal.aborted) return;
+      const k = ms ? Math.min(1, (now - t0) / ms) : 1;
+      go({ ...cam, y: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2) }, false, true, true);
+      if (k < 1) return void (nudging = requestAnimationFrame(step));
+      nudging = 0;
+      done?.();
+    };
+    step(t0);
+  };
   let sized = false;
   const ro = new ResizeObserver(() => {
     const [px, py, pv] = [ox, oy, view];
@@ -826,6 +842,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (!sized || !cards.length) return void ((sized = true), go(moved || held ? cam : fitAll(boxes(), view), false));
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
     cam = camBack || { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    if (home != null && !camBack) home -= (oy - py) / cam.z; // where the glide goes back to moves with the box, as the camera does
     camBack = null;
     if (!sizing) sizedFrom = { w: pv.w, h: pv.h };
     sizing = boxed = true;

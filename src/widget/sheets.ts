@@ -176,6 +176,7 @@ export function revealDraft() {
   const float: HTMLElement | null = W.root.querySelector('.float:not(.out)');
   const pin: HTMLElement | null = W.root.querySelector('.pin.draft');
   if (!W.coarse || !float || !pin || !W.vv) return;
+  if (pin.style.position === 'fixed') return; // a board's pin is held to the screen: scrolling the page under the board moves nothing but the page (the board's camera brings the pin up, overlay.ts)
   const up = innerHeight - W.vv.height;
   const keys = up > 60 ? up : W.S.kbSeen || Math.round(innerHeight * 0.42); // the keyboard it will have
   const sheetTop = innerHeight - keys - float.offsetHeight - 8; // where it comes to rest, not where it is growing now

@@ -889,6 +889,14 @@ import { bindKeys } from './widget/keys.ts';
     n.style.left = `${parseFloat(n.style.left) - scrollX}px`;
     n.style.top = `${parseFloat(n.style.top) - scrollY}px`;
   };
+  // Phones: the page behind an open sheet doesn't scroll (the rule is with the page's other styles, below).
+  const holdPage = (/** @type {boolean} */ on) => {
+    const de = document.documentElement;
+    de.classList.remove('lab-hold-b', 'lab-hold-h');
+    if (!on) return;
+    const cs = getComputedStyle(de);
+    de.classList.add(cs.overflowX === 'visible' && cs.overflowY === 'visible' ? 'lab-hold-b' : 'lab-hold-h');
+  };
   let viewW = 0; // the screen's width without its scrollbar (flipAt)
   function render() {
     if (!moAsked && (S.draft?.anchor?.moment || S.comments.some((/** @type {any} */ x) => x.anchor?.moment))) void loadMotion().then(() => render()); // a moment's chip is the motion file's
@@ -979,6 +987,7 @@ import { bindKeys } from './widget/keys.ts';
       host.setAttribute('data-opening', '');
       requestAnimationFrame(() => requestAnimationFrame(() => host.removeAttribute('data-opening')));
     }
+    if (coarse && host.hasAttribute('data-sheet') !== document.documentElement.classList.contains('lab-sheet')) holdPage(host.hasAttribute('data-sheet'));
     document.documentElement.classList.toggle('lab-sheet', host.hasAttribute('data-sheet'));
     holdWhileOpen(host.hasAttribute('data-sheet')); // a dev server's reload waits until the chat, thread or list is closed
     backCloses();
@@ -1970,7 +1979,11 @@ import { bindKeys } from './widget/keys.ts';
     if (!room) de.classList.remove('lab-room');
   }, { passive: true });
   // Phones: and the page behind stays put, even when the part of the sheet you drag on has nothing to scroll.
-  pageStyle.textContent += '@media (pointer: coarse) { html.lab-sheet, html.lab-sheet body { overflow: hidden; } }';
+  // On the one element whose overflow is the screen's: body when the page leaves html's alone (the browser takes body's for
+  // the screen, and body is laid out as before), else html. On both, body got an overflow of its own and its first
+  // child's top margin stopped collapsing through it: the whole page moved down by that margin (21 px under an h1) each
+  // time a sheet opened and back up when it closed (Leo, 21 Nov: the page jumps when the chat opens or closes).
+  pageStyle.textContent += '@media (pointer: coarse) { html.lab-hold-b body, html.lab-hold-h { overflow: hidden; } }';
   // Holding a finger on a link pins it (see Phones above): no link preview while comments are on.
   pageStyle.textContent += `html:has([data-lab-pinning]) body, html:has([data-lab-pinning]) body * { -webkit-touch-callout: none; }`;
   // Phones: with comments on, a hold is labit's (a pin), not the start of a text selection: iOS would cancel the touch

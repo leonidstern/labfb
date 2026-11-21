@@ -20,8 +20,8 @@ let lastOpts: Opts | null = null; // a forward to #board=<name> opens it as the 
 // the page's own !important on the host (an inner shadow context wins the important declarations); the height is the
 // --bv-h variable, set inline by paintSize. cursor: inherit keeps the page's pin pointer over the board.
 const CSS = `
-:host{all:initial!important;opacity:var(--bv-o,1)!important;translate:0 var(--bv-pan,0px)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
-.bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08)}
+:host{all:initial!important;opacity:var(--bv-o,1)!important;translate:0 var(--bv-pan,0px)!important;clip-path:var(--bv-clip,none)!important;transition:clip-path var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1)!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
+.bv-bar{position:relative;flex:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08);translate:0 var(--bv-bar,0px);transition:translate var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
 .bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
 .bv-bar button:hover{background:rgba(0,0,0,.06)}
@@ -36,6 +36,7 @@ const CSS = `
 @media (prefers-color-scheme:dark){:host{background:#1b1b1a!important;color:#e9e8e4!important}.bv-bar button:hover{background:rgba(255,255,255,.08)}.bv-bar{border-color:rgba(255,255,255,.08)}}
 `;
 const MIN = 0.25; // the least of the window it is dragged down to
+const EDGE = 280; // ms: a half view's top edge going up as the keyboard comes, and back down after
 const sizeKey = (page: string) => `lab-board-size:${page}`;
 const readSize = (page: string) => {
   try {
@@ -153,39 +154,61 @@ export function show(name: string, o: Opts) {
   // what the keyboard leaves keeps sliding: there is nothing of it to hold.
   const vv = window.visualViewport;
   let pan = 0;
-  let nudged = 0;
+  let nudged = false; // the camera has glided to show a draft pin
+  let settling = false; // …and is gliding back
   let scrollFrom = -1; // where the page was when the keyboard came up
   let grown = false; // a half view that is full while the keyboard is up
   let grownAt = -1e9;
   let typed = false; // the keyboard has been up since scrollFrom was taken
   let loop = 0;
   let quiet = 0;
+  // The view's top edge slides (a clip, the box itself changes size in one step: resized on every frame, the board would be
+  // laid out again on each). from → to: px cut off the top; no arguments: no cut. Answers when it is over.
+  const edge = (from?: number, to?: number) => {
+    const still = from === undefined || matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cut = (px: number) => `inset(${px}px -100px -200px -100px)`;
+    view.style.setProperty('--bv-clip-t', '0s');
+    if (still) return (view.style.removeProperty('--bv-clip'), view.style.removeProperty('--bv-bar'), 0);
+    view.style.setProperty('--bv-clip', cut(from!));
+    view.style.setProperty('--bv-bar', `${from}px`); // the bar rides the edge
+    void bar.offsetHeight;
+    view.style.setProperty('--bv-clip-t', `${EDGE}ms`);
+    view.style.setProperty('--bv-clip', cut(to!));
+    view.style.setProperty('--bv-bar', `${to}px`);
+    return performance.now() + EDGE;
+  };
   const follow = () => {
     if (!vv || !matchMedia('(pointer: coarse)').matches) return;
     const typing = Math.abs(vv.scale - 1) < 0.01 && innerHeight - vv.height > 60; // the keyboard is up
     const sr = document.querySelector('[data-lab-comments]')?.shadowRoot;
     const sheet = sr?.querySelector('.float:not(.out)')?.getBoundingClientRect();
+    const draft = sr?.querySelector<HTMLElement>('.pin.draft');
+    const pin = draft?.style.position === 'fixed' ? draft.getBoundingClientRect() : null; // a new comment on the board (its pin is held to the screen)
+    let changed = false;
     if (typing) {
       typed = true;
       if (scrollFrom < 0) scrollFrom = scrollY;
+      if (settling) {
+        settling = nudged = false; // typing again before the camera was back: it goes to the new pin from where it is
+        if (grown) edge();
+      }
     } else if (typed && !sheet && scrollFrom >= 0 && !vv.offsetTop) {
       if (Math.abs(scrollY - scrollFrom) > 1) scrollTo({ top: scrollFrom, behavior: 'instant' as ScrollBehavior }); // the page iOS scrolled for the keyboard goes back
       scrollFrom = -1;
       typed = false;
     }
-    // A half view grows to the whole screen while the keyboard is up (its top part would be panned off, and it would slide),
-    // and settles back to its size once the keyboard and the comment's sheet have gone (Leo, 21 Nov: "canvas still jumping",
-    // the half board). Neither resize fits the board again: it stays where it is on the screen (api.hold).
-    if (typing && size < 1 && !grown) {
+    // A new comment on a half view: its pin is under the keyboard and its sheet. The view grows to the whole screen while
+    // the keyboard is up, the board staying where it is on the screen (api.hold), and the camera then glides the pin above
+    // the sheet (Leo, 21 Nov: "canvas still jumping", the half board). Writing in the chat or a thread grows nothing: their
+    // sheet fills the screen above the keyboard anyway.
+    if (typing && pin && size < 1 && !grown) {
       grown = true;
       grownAt = performance.now();
       board.api.hold(true);
+      const top = view.getBoundingClientRect().top;
       view.style.setProperty('--bv-h', '100%');
-    } else if (!typing && grown && !sheet && !vv.offsetTop) {
-      grown = false;
-      nudged = 0; // the camera goes back whole, to where it was before the grow (api.hold)
-      paintSize();
-      board.api.hold(false);
+      at = view.getBoundingClientRect(); // (the board says its box changed, and the widget moves its pins: nothing is drawn again, the new comment's box stays as it is)
+      edge(top, 0);
     }
     const viewTop = innerHeight - view.offsetHeight; // where the view starts when nothing is panned
     const next = typing && viewTop < vv.height - 160 ? Math.round(vv.offsetTop) : !typing ? Math.round(vv.offsetTop) : 0;
@@ -197,18 +220,35 @@ export function show(name: string, o: Opts) {
       host?.toggleAttribute('data-pan', pan > 0);
       at = view.getBoundingClientRect();
       quiet = 0;
+      changed = true;
     }
-    const pin = sr?.querySelector('.pin.draft')?.getBoundingClientRect();
     // Not in the frames right after the view grew: the pins are drawn again for the new box first.
     if (typing && pin && sheet && !nudged && sheet.top > 0 && performance.now() - grownAt > 80) {
       const over = pin.bottom + 16 - sheet.top;
       const dy = over > 0 ? -over - 24 : pin.top < 56 ? 56 - pin.top : 0;
-      if (dy) nudged = board.api.nudge(dy);
-    } else if (!typing && nudged && !grown) {
-      board.api.nudge(-nudged);
-      nudged = 0;
+      nudged = true; // looked at once per comment: the pin is not chased as the sheet moves
+      if (dy) board.api.nudge(dy);
+    } else if (!typing && !sheet && !vv.offsetTop && (nudged || grown) && !settling) {
+      // The keyboard and the comment's sheet have gone: the camera glides back to where it was, and only then is a grown
+      // view half again, the board put back as it was before it grew. Nothing is seen of that last step: the board is
+      // already where it will be (shrunk first, it jumped 288 px in one frame: 21 Nov simulator).
+      settling = true;
+      const shut = grown ? edge(0, innerHeight * (1 - size)) : 0; // the page comes back above the board as the camera goes
+      board.api.nudgeBack(() => setTimeout(() => {
+        if (!settling) return; // typing again meanwhile
+        settling = nudged = false;
+        if (!grown) return;
+        grown = false;
+        paintSize();
+        board.api.hold(false);
+        edge();
+        at = view.getBoundingClientRect();
+        moved();
+      }, Math.max(0, shut - performance.now())));
     }
-    moved();
+    // Only when the view moved or changed its size: drawn again on every frame, the comment's box was made anew and took
+    // the cursor again each time, which came back here as a focus and kept this going for as long as the box was open.
+    if (changed) moved();
   };
   // Where the page was before the keyboard: taken as a field is focused, before iOS scrolls for it (taken when the keyboard
   // was already up, it was the scrolled place, and the page was put back there: 21 Nov simulator, 423 instead of 0).
@@ -222,7 +262,8 @@ export function show(name: string, o: Opts) {
     const before = pan;
     follow();
     quiet = before === pan ? quiet + 1 : 0;
-    loop = quiet < 20 ? requestAnimationFrame(tick) : 0;
+    // …and for as long as the camera or the view is away for a keyboard: the sheet's going is no event.
+    loop = quiet < 20 || ((nudged || grown) && !settling) ? requestAnimationFrame(tick) : 0;
   };
   const watch = () => {
     quiet = 0;

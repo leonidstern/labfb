@@ -595,7 +595,10 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   /* Pulled up: the chat takes the whole screen, below the status bar (iOS large / Android expanded). */
   .chatwin.full, .card.full { max-height: none; }
   /* The header is the sheet's top edge, grab handle drawn on it; the list scrolls below it, never under or above it. */
-  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; background: var(--_bg); }
+  /* No background of its own (the sheet's shows): a strip 18 px tall can't have the sheet's 30 px corners, so its white box
+     stood out past them and covered the sheet's edge and shadow there (Leo, 21 Nov: the chat "hides behind some fade", seen
+     over a board's grey). */
+  .list .tabs { flex-wrap: nowrap; overflow-x: auto; padding: 18px 12px 8px; }
   .chatwin .msgs { padding: 4px 12px 8px; }
   .chatwin .tabs { padding: 18px 12px 0; } /* just the grab strip, as tall as a thread's */
   .chatwin .chat { padding: 6px 12px var(--_pb); }
@@ -671,7 +674,6 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .card, .float, .list, .sw-box { left: var(--_gap) !important; right: var(--_gap); bottom: var(--_gap) !important; border-radius: var(--_card-r) !important;
     background: var(--_bg);
     box-shadow: 0 0 0 .5px color-mix(in srgb, var(--_fg) 10%, transparent), 0 0 8px rgba(0, 0, 0, .14); transform-origin: var(--lab-from, 50% 100%); }
-  .list .tabs { border-radius: var(--_card-r) var(--_card-r) 0 0; }
   :host([data-kb]) :is(.card, .list:not([hidden]), .sw-box) { top: calc(var(--lab-top, 0px) + var(--_gap)) !important; height: calc(var(--lab-vh, 100dvh) - 2 * var(--_gap)) !important; }
   :host([data-kb]) .float { bottom: calc(var(--lab-kb, 0px) + var(--_gap)) !important; }
   /* Pinch-zoomed: a thread's or new comment's sheet (on the page's layer, with the pins) is drawn the same way as .ui:
@@ -681,6 +683,13 @@ kbd::before { content: '('; } kbd::after { content: ')'; } /* read as a hint: ch
   .chatwin.full, .card.full { height: calc(var(--lab-vh, 100dvh) - env(safe-area-inset-top, 0px) - 10px - var(--_gap) + var(--_kb)); }
   .scrim { background: transparent; }
   .card.in, .float.in, .list:not([hidden]), .sw-box { animation: lab-card-in var(--_t-slow) var(--_ease); }
+  /* Safari paints the strip under its see-through bar in the colour of whatever fixed thing comes within a few px of the
+     screen's bottom: a sheet rising in, sliding away or pulled down by a finger turned it the sheet's white, a square band
+     under a grey board (Leo, 21 Nov; iOS 27 simulator). It takes the topmost fixed thing there, and a clear one changes
+     nothing: this strip lies over everything of ours while a sheet is open or leaving, so the bar keeps the colour it had
+     (the page's, or the board's). Only then: there all the time, a board opened under it never coloured the bar. 2 px was
+     not enough, 12 is. */
+  :host(:is([data-sheet], [data-leaving])) .ui::after { content: ''; position: fixed; left: 0; right: 0; bottom: 0; height: 12px; z-index: 9; pointer-events: none; }
 }
 /* A sheet rises into place from the screen's edge, nearly its own size: it used to grow from 30% at the chip, and for those
    frames the pill, the empty page and a small ghost of the sheet showed behind it (Leo, 21 Nov: "weird square placeholder
