@@ -70,6 +70,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const signal = ac.signal;
   const on = <K extends string>(type: K, fn: (e: never) => void, o: AddEventListenerOptions | boolean = {}) => addEventListener(type, fn as EventListener, { ...(typeof o === 'boolean' ? { capture: o } : o), signal });
   root.id = 'lab-board';
+  // Not shown until the board has been read and fitted (or has failed to be): before, a reload drew the empty board at 100 %,
+  // its dots and "100%" label at full size, and a moment later fitted it to 40 % with the frames in (Leo, 21 Nov: "when
+  // reloading page its blinking like zoomed and elements appears weird").
+  root.style.visibility = 'hidden';
+  const reveal = () => root.style.removeProperty('visibility');
   // The canvas: a grid of dots, one background on one element (Leo, 19 Nov: "more fancy, maybe dotted, more our
   // style"; then "more whiter pls and smaller dots less visible": near white, 1 px dots at a tenth of black, and a
   // hairline round each frame so a white page still has an edge on it). It goes with the camera (paintCam) and fades
@@ -325,9 +330,10 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (signal.aborted) return;
     if (!res?.ok) {
       text('div', res?.status === 404 ? `There is no board called ${name}.` : 'The board could not be read.', world).className = 'none';
-      return;
+      return reveal();
     }
     show(await res.json());
+    reveal();
   };
   // When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
   fetch('/_lab/pages').then((r) => r.json()).then((d) => {
