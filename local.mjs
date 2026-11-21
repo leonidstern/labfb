@@ -1331,10 +1331,11 @@ if (!PROXY) watchTree(ROOT, (event, file) => {
       const known = pages()[0];
       if (known) fileFor(known); // listed again at once, so a renamed page's comments and looks go with it now
     }
-    const hotOnly = !otherSaved.size && hotSaved.size > 0 && hotSaved.size <= 50; // more than the list holds: a reload
+    // A burst too big to list (a branch switch, a build), in either list: no list, so every page reloads, as it always did.
+    const tooMany = hotSaved.size > 50 || otherSaved.size > 50;
+    const hotOnly = !otherSaved.size && hotSaved.size > 0 && !tooMany;
     const hot = [...hotSaved].slice(0, 50).map(([p, kind]) => ({ path: p, kind }));
-    // A burst too big to list (a branch switch, a build): no list, so every page reloads, as it always did.
-    const changed = otherSaved.size && otherSaved.size <= 50 ? [...otherSaved] : null;
+    const changed = otherSaved.size && !tooMany ? [...otherSaved] : null;
     hotSaved.clear();
     otherSaved.clear();
     if (hotOnly) version = { ...version, hot: (version.hot || 0) + 1, hotFiles: hot };
@@ -1882,7 +1883,7 @@ let UPDATE = null;
 const updateAttr = () => (UPDATE ? ` data-update="${JSON.stringify(UPDATE).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')}"` : '');
 const widget = (page, admin, me = '', framed = false) => {
   if (!framed) markOpened(page); // a page loaded into a board's frame is not somebody opening it
-  return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
+  return `<script src="/_lab/comments.js" data-live="/_lab/live" data-on="1" data-page="${page}" data-version="${version.files}" data-hot="${version.hot || 0}" data-lab="${version.lab}" data-widget="${version.widget}" data-schema="${SCHEMA}"` +
   `${me ? ` data-me="${me.replace(/[<>&'"]/g, '')}"` : ''}` +
   `${KEYS_ATTR}${actionsAttr()}${LABIT_ATTR}${updateAttr()}${PROXY ? ' data-proxied="1"' : ''} data-lab-name="${LAB_NAME.replace(/[<>&'"]/g, '')}"` +
   `${admin ? ` data-admin="${TOKEN}"` : ''} defer></script>\n`;

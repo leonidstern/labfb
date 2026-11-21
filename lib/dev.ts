@@ -114,9 +114,12 @@ const keepSqueezed = (key: string, out: Buffer): Buffer => {
 // A page script the npm package ships brotli-packed (<name>.js.br, scripts/build-widget.mjs) and a checkout has plain: the
 // answer sendFile gives for <name>.js, made from the packed file. To a browser that takes brotli the packed bytes go as they
 // are; to one that doesn't they are unpacked (once per file) and sent plain or gzipped. No range answers: a script goes whole.
+// The validator for a file's bytes: size, mtime, inode and ctime. A file saved with the same size and mtime (cp -p, rsync -t, two
+// saves in one millisecond) still differs in its ctime, and one replaced through a temp file in its inode.
+const etagOf = (stat: fs.Stats): string => `W/"${[stat.size, Math.round(stat.mtimeMs), stat.ino, Math.round(stat.ctimeMs * 1000)].map((n) => n.toString(36)).join('-')}"`;
 export function sendPacked(req: IncomingMessage, res: ServerResponse, file: string): void {
   const stat = fs.statSync(`${file}.br`);
-  const etag = `W/"${stat.size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
+  const etag = etagOf(stat);
   if (req.headers['if-none-match'] === etag) return void res.writeHead(304, { 'cache-control': 'no-cache', etag }).end();
   const enc = encodingFor(req);
   const key = `${file} ${etag} `;
@@ -130,7 +133,7 @@ export function sendFile(req: IncomingMessage, res: ServerResponse, file: string
   const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
   const stat = fs.statSync(file);
   const size = stat.size;
-  const etag = `W/"${size.toString(36)}-${Math.round(stat.mtimeMs).toString(36)}"`;
+  const etag = etagOf(stat);
   const head = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': /\.(css|m?js)$/i.test(file) ? 'no-store' : 'no-cache', etag }; // no-store: Back shows what is on disk, not a script from the cache
   if (req.headers['if-none-match'] === etag) return void res.writeHead(304, { 'cache-control': 'no-cache', etag }).end();
   const enc = !req.headers.range && size > 1024 && size < 8e6 && SQUEEZE.test(type) ? encodingFor(req) : '';
