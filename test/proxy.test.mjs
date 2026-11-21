@@ -22,6 +22,7 @@ const dev = http.createServer((req, res) => {
   if (req.url === '/nohead') return void res.writeHead(200, { 'content-type': 'text/html' }).end('\n<!-- c -->\n<!DOCTYPE html>\n<html><body><p>no head</p></body></html>');
   if (req.url === '/frag') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end('<ul><li>one</li><li>two</li></ul><p>hi</p>');
   if (req.url === '/whole') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end('<!doctype html><html><head><title>w</title></head><body><p>whole</p></body></html>');
+  if (req.url === '/jar') return void res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'set-cookie': 'app=1; Path=/' }).end(`<!doctype html><html><head><title>j</title></head><body><p>${req.headers.cookie || ''}</p></body></html>`);
   if (req.url === '/favicon.ico') return void (icon ? res.writeHead(200, { 'content-type': 'image/x-icon' }).end('ico') : res.writeHead(404).end('no'));
   if (req.url === '/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -79,6 +80,16 @@ test('a page with a comment before its doctype and no <head> keeps its doctype w
   await up();
   const text = await (await fetch(`http://localhost:${PORT}/nohead`, { headers: { accept: 'text/html' } })).text();
   assert.match(text, /<!DOCTYPE html><script>[^]*?<\/script>\n<html>/, 'the doctype is in one piece, the reload-holder after it');
+});
+
+test('a browser is given its id for the page\'s error reports beside the app\'s own cookies, and the app never sees it', async () => {
+  await up();
+  const first = await fetch(`http://localhost:${PORT}/jar`, { headers: { 'sec-fetch-dest': 'document', accept: 'text/html', cookie: 'app=0' } });
+  const jar = first.headers.getSetCookie();
+  assert.ok(jar.some((c) => /^lab_dev_\d+=[0-9a-f]{16};/.test(c)), 'the lab\'s id');
+  assert.ok(jar.includes('app=1; Path=/'), 'and the app\'s own cookie');
+  const back = await (await fetch(`http://localhost:${PORT}/jar`, { headers: { 'sec-fetch-dest': 'document', accept: 'text/html', cookie: `app=2; ${jar.find((c) => c.startsWith('lab_dev_')).split(';')[0]}; other=3` } })).text();
+  assert.match(back, /<p>app=2; other=3<\/p>/, 'the dev server got its own cookies only');
 });
 
 test('a person who leaves an event stream ends it at the dev server too', async () => {

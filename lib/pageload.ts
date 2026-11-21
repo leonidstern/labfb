@@ -16,3 +16,14 @@ export function isPageLoad(h: IncomingHttpHeaders): boolean {
   if (dest) return NAVIGATION.has(String(dest)) || /prefetch|prerender/i.test(String(h['sec-purpose'] || ''));
   return !h['x-requested-with'] && /text\/html/i.test(h.accept || '');
 }
+
+// A browser really loading the page, which is what a page's errors belong to (local.mjs pageErrors): a new load of it
+// forgets what the last one reported. Not the widget's own fetch of the page (a patch in place, the page stays open),
+// not a prefetch, and not a script or a curl that asks for HTML: over the wifi address (plain http) a browser sends no
+// Sec-Fetch headers, so there it is told by what it calls itself.
+export function isNavigation(h: IncomingHttpHeaders): boolean {
+  if (h['x-lab'] || !isPageLoad(h)) return false;
+  const dest = h['sec-fetch-dest'];
+  if (dest) return NAVIGATION.has(String(dest)) && !/prefetch|prerender/i.test(String(h['sec-purpose'] || ''));
+  return String(h['user-agent'] || '').startsWith('Mozilla/');
+}
