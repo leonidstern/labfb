@@ -1013,7 +1013,7 @@ import { bindKeys } from './widget/keys.ts';
       if (isPage(c)) return; // in the chat, not on the page
       // Done pins with nothing new in them step aside when done ones are hidden (D); an open one stays.
       if (!S.showDone && S.openId !== c.id && (c.resolved || workState(c)[0] === 'done') && !unread(c).length) return;
-      const { left, top, moved, zone, clipped, covered, from, why } = places.get(c.id) || position(c.anchor || {});
+      const { left, top, moved, zone, clipped, covered, why } = places.get(c.id) || position(c.anchor || {});
       // A pin whose spot is gone is off the page: the ⋯ menu lists them ("moved · N"); an open one shows, to drop on a
       // new spot (drag) or close. The agent finishing one closes it.
       if (moved) {
@@ -1021,7 +1021,6 @@ import { bindKeys } from './widget/keys.ts';
           autoShut.add(c.id);
           send({ action: 'resolve', id: c.id, edit: store.get(`lab-edit:${c.id}`) || undefined }).then(({ comment }) => (Object.assign(c, comment), render()), () => {});
         }
-        if (!c.resolved) add(el('i', { class: 'lostmark', 'aria-hidden': 'true', style: `left:${from}px;top:${top}px` })); // where it stood: faint, no target
         if (S.openId !== c.id) return;
       }
       const ink = zone && c.anchor.ink; // a drawing is its own pin: its lines, no marker (draw.ts)
