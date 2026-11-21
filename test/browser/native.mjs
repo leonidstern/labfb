@@ -64,8 +64,8 @@ try {
         const at = (sel, fx, fy) => p.evaluate(([sel, fx, fy]) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + fx * r.width, y: r.top + fy * r.height }; }, [sel, fx, fy]);
 
         // The ⋯ menu on a computer: a popover the browser opens and closes. (A phone keeps it in the bar: a pinch zoom
-        // scales the bar, not the top layer.)
-        if (can.popover && !phone) {
+        // scales the bar, not the top layer; nor does Safari, which has no `overlay`: a popover would close in one frame.)
+        if (can.popover && can.overlay && !phone) {
           await inRoot(p, (r) => r.querySelector('.more').click());
           await settle(p);
           const open = await inRoot(p, (r) => { const m = r.querySelector('.more-menu'); return { pop: m.matches(':popover-open'), hidden: m.hidden, expanded: r.querySelector('.more').getAttribute('aria-expanded'), focus: r.activeElement?.closest('.more-menu') === m }; });
