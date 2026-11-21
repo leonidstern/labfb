@@ -4,6 +4,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import net from 'node:net';
 import { site, tmp, rm, spawnLab, sleep } from './harness.mjs';
 
 const { DIR, PORT } = site('proxy', 6400, 90);
@@ -154,6 +155,35 @@ test('no favicon.ico at the dev server: labit\'s mark, not a 404; the app\'s own
   for (const method of ['HEAD', 'GET']) assert.deepEqual(await get(method), [302, '/_lab/favicon.svg'], `${method}: a 404 is redirected`);
   icon = true;
   for (const method of ['HEAD', 'GET']) assert.deepEqual(await get(method), [200, 'image/x-icon'], `${method}: the app's icon is served`);
+});
+
+// The dev server's live-reload socket: frames sent in the same write as the 101 (they reach the lab as the upgrade's head), and a
+// burst right after, all arrive through the lab, and in order (torture: a message "lost" through the proxy was a harness race).
+test('a websocket through the lab gets every frame the dev server sends, those written with the 101 and a burst after it', async () => {
+  await up();
+  const frame = (t) => Buffer.concat([Buffer.from([0x81, t.length]), Buffer.from(t)]);
+  const sockets = new Set(); // upgraded sockets are no longer the http server's: it would wait for them when it closes
+  dev.on('upgrade', (req, socket) => {
+    sockets.add(socket);
+    socket.write(Buffer.concat([Buffer.from('HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: x\r\n\r\n'), frame('connected'), frame('full-reload')]));
+    for (let i = 0; i < 50; i++) socket.write(frame(`m${i}`));
+    socket.on('error', () => {});
+  });
+  const text = await new Promise((done, fail) => {
+    let got = Buffer.alloc(0);
+    const s = net.connect(PORT, '127.0.0.1', () => s.write(`GET /?token=t HTTP/1.1\r\nHost: localhost:${PORT}\r\nOrigin: http://localhost:${PORT}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n`));
+    s.on('data', (d) => {
+      got = Buffer.concat([got, d]);
+      const at = got.indexOf('\r\n\r\n');
+      if (at >= 0 && got.subarray(at + 4).toString('latin1').includes('m49')) (s.destroy(), done(got.toString('latin1')));
+    });
+    s.on('error', fail);
+    setTimeout(() => (s.destroy(), done(got.toString('latin1'))), 4000);
+  });
+  for (const s of sockets) s.destroy();
+  assert.match(text, /^HTTP\/1\.1 101 /);
+  const body = text.slice(text.indexOf('\r\n\r\n') + 4).replace(/[\x00-\x1f\x80-\xff]/g, ' ');
+  assert.deepEqual(body.trim().split(/\s+/), ['connected', 'full-reload', ...Array.from({ length: 50 }, (_, i) => `m${i}`)]);
 });
 
 // Last: it stops the dev server for good.
