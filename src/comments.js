@@ -83,6 +83,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     get agentOf() { return agentOf; },
     get anchorAt() { return anchorAt; },
     get begin() { return begin; },
+    get addComment() { return addComment; },
     get bar() { return bar; },
     get chatBtn() { return chatBtn; },
     get chatEl() { return chatEl; },
@@ -391,6 +392,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
       if (!res.ok) throw new Error(String(res.status));
       const data = await res.json();
       S.comments = data.comments || [];
+      S.rev = res.headers.has('x-lab-rev') ? Number(res.headers.get('x-lab-rev')) : null; // the lab's comments version this list is as of
       S.isAdmin = Boolean(data.admin);
       // A thread you were part-way through writing in opens again: the page may have reloaded under you
       // (a dev server rebuilding) and the words are kept, so the box they belong to comes back with them.
@@ -697,7 +699,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     const act = `update labit to ${update.version}`;
     try {
       const { comment } = await send({ name: store.get('lab-name') || '', text: act, anchor: { kind: 'page', width: innerWidth, height: innerHeight, act } });
-      S.comments.push(comment);
+      addComment(comment);
       S.chatOpen = true;
       render();
     } catch {}
@@ -771,6 +773,11 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
     const memo = passNow().unread;
     if (!memo.has(c.id)) memo.set(c.id, [c, ...repliesOf(c.id)].filter(isNew));
     return /** @type {any[]} */ (memo.get(c.id));
+  };
+  // A comment this page just sent, added unless it is there already: the live stream and /changes may have brought it
+  // before the POST's answer (or a retry of the POST answers with the same comment again).
+  const addComment = (comment) => {
+    if (!S.comments.some((c) => c.id === comment.id)) S.comments.push(comment);
   };
   const markSeen = (items) => {
     const fresh = items.filter((item) => !S.seen.has(item.id)).map((item) => item.id);
@@ -1191,7 +1198,7 @@ import { bindMotion, drawMotion, momentFor, msOf, pausedEl, setPause, setSlow, s
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
-          S.comments.push(comment);
+          addComment(comment);
           markSeen([comment]);
           S.draft = null;
           keepSpot(null);
