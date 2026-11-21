@@ -78,6 +78,17 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const signal = ac.signal;
   const on = <K extends string>(type: K, fn: (e: never) => void, o: AddEventListenerOptions | boolean = {}) => addEventListener(type, fn as EventListener, { ...(typeof o === 'boolean' ? { capture: o } : o), signal });
   root.id = 'lab-board';
+  // Not shown until the board has been read and fitted (or has failed to be): before, a reload drew the empty board at 100 %,
+  // its dots and "100%" label at full size, and a moment later fitted it to 40 % with the frames in (Leo, 21 Nov: "when
+  // reloading page its blinking like zoomed and elements appears weird").
+  root.style.visibility = 'hidden';
+  let shown = false;
+  const reveal = () => {
+    if (shown) return;
+    shown = true;
+    root.style.removeProperty('visibility');
+    dispatchEvent(new Event('lab-board-moved')); // the widget draws the board's pins now: until here they are told as out of sight (spot, below), not left hanging over an empty board
+  };
   // The canvas: a grid of dots, one background on one element (Leo, 19 Nov: "more fancy, maybe dotted, more our
   // style"; then "more whiter pls and smaller dots less visible": near white, 1 px dots at a tenth of black, and a
   // hairline round each frame so a white page still has an edge on it). It goes with the camera (paintCam) and fades
@@ -105,6 +116,10 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let over = ''; // the frame under the pointer
   const taken: { id: string; x?: number; y?: number }[] = []; // pictures this browser took off, newest last: ⌘Z puts the last one back
   let moved = false; // the person moved the camera: a resize no longer fits everything again
+  let sizedFrom = { w: 0, h: 0 }; // the box's size when its resize began
+  let heldCam: Cam | null = null; // the camera when the hold began
+  let camBack: Cam | null = null; // where the next resize puts it (the hold let go)
+  let held = false; // a resize that isn't the person's (a phone's keyboard growing a half view): the board stays where it is on the screen
   let selected = '';
   let entered = '';
   let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
@@ -178,7 +193,12 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (left > 1) return void (still = setTimeout(rest, left));
     if (sizing) {
       sizing = false;
-      return go(moved ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
+      // Only the height, and by no more than a phone's toolbar does as the page scrolls (40 px on iOS 27): the board stays
+      // where it is on the screen. Fitted again, it went through three places and ended 15 px off (21 Nov simulator).
+      const bar = view.w === sizedFrom.w && Math.abs(view.h - sizedFrom.h) <= 100;
+      // Held (a phone's keyboard): it stays as it is, where the hold or its glide put it. Fitted or held to its edges again
+      // here, mid-glide, it jumped 68 px and the widget drew everything again (21 Nov simulator).
+      if (!held) return go(moved || bar ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
     }
     layered = false;
     world.style.willChange = '';
@@ -204,11 +224,15 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   // The camera goes to next, held to the board's edges: past an edge it just stops (Leo, 19 Nov: "remove weird bounce
   // on edge of canvas": it gave way and sprang back). pan: a move that keeps a fitted frame's focus (a phone's swipe).
-  const go = (next: Cam, user = true, pan = false) => {
-    const c = clamp(next, boxes(), view);
+  let nudging = 0; // the camera's glide to a draft pin (api.nudge)
+  let home: number | null = null; // where the camera was before that glide (api.nudgeBack takes it there again)
+  let holdOff: ReturnType<typeof setTimeout> | undefined;
+  const go = (next: Cam, user = true, pan = false, camOnly = false) => {
+    const c = camOnly ? next : clamp(next, boxes(), view); // a glide's steps are its own (api.nudge): held to the edges, each would jump to them
     if (user) moved = true;
+    if (user) [home, heldCam] = [null, null]; // moved by hand while a keyboard holds the board: it stays where the hand left it
     if (user && (!pan || Math.abs(c.z - cam.z) > 1e-6)) focus = false;
-    if (!user) whole = true; // the board itself changed (its box, its frames): the widget draws everything again
+    if (!user && !camOnly) whole = true; // the board itself changed (its box, its frames): the widget draws everything again
     cam = c;
     draw();
     moving();
@@ -258,13 +282,18 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     fr.title = c.f.label || c.f.src;
     fr.addEventListener('load', () => {
       fr.dataset.ready = '1';
+      fr.style.visibility = '';
+      for (const n of Array.from(c.inner.children)) if (n !== fr) n.remove(); // the card it covered (taken out after, not before: an iframe moved in the page loads again)
       if (entered === c.f.id) focusIn(c);
       wake(); // the next one may load now
     }, { once: true });
     fr.src = c.f.src;
     c.frame = fr;
     c.seen = performance.now();
-    c.inner.replaceChildren(fr);
+    // Shown once it has loaded, over its card until then: a reload showed the card, then a blank white frame, then the page
+    // (Leo, 21 Nov: "inside canvas after reload one thing not flicker second thing there flickering").
+    fr.style.visibility = 'hidden';
+    c.inner.append(fr);
   }
   function sleep(c: Card) {
     c.frame?.remove();
@@ -343,9 +372,19 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (signal.aborted) return;
     if (!res?.ok) {
       text('div', res?.status === 404 ? `There is no board called ${name}.` : 'The board could not be read.', world).className = 'none';
-      return;
+      return reveal();
     }
     show(await res.json());
+    // Shown with its frames' pages in them, all at once: frame by frame as each loaded, one stood there blank and white for a
+    // moment beside another that already had its page (Leo, 21 Nov: "one thing not flicker second thing there flickering").
+    // A frame that takes longer than that moment shows its card, then its page.
+    const t0 = performance.now();
+    const ready = () => {
+      if (signal.aborted) return;
+      if (loading() && performance.now() - t0 < 450) return void setTimeout(ready, 16);
+      reveal();
+    };
+    ready();
   };
   // When each page was saved, for "edited 5m ago" (a variant's file has no such time here: the card says none).
   fetch('/_lab/pages').then((r) => r.json()).then((d) => {
@@ -792,9 +831,35 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       // An area or a drawing on a frame: its box is its shares of the frame (as drawn, whatever the device), from its corner, and its
       // pin where the drag ended.
       const zone = f && a.fx !== undefined && a.zw ? { left: sx + scrollX, top: sy + scrollY, width: a.zw * f.w * cam.z, height: (a.zh || 0) * f.h * cam.z } : null;
-      return { left: sx + scrollX + (zone && a.pinX ? zone.width : 0), top: sy + scrollY + (zone && a.pinY ? zone.height : 0), zone, ...(opts.clip && !inBox(sx, sy) && { clipped: true }) };
+      return { left: sx + scrollX + (zone && a.pinX ? zone.width : 0), top: sy + scrollY + (zone && a.pinY ? zone.height : 0), zone, ...(((opts.clip && !inBox(sx, sy)) || !shown) && { clipped: true }) };
     },
     camera: () => ({ ...cam }),
+    /** While on, the view's resizes keep the board where it is on the screen instead of fitting it again (a phone's keyboard). */
+    hold: (on: boolean) => {
+      clearTimeout(holdOff);
+      if (on) {
+        if (!held) heldCam = { ...cam };
+        held = true;
+        return;
+      }
+      // Let go: the next resize puts the camera back where it was before the hold, as it was (kept on the screen through a
+      // grow and a shrink it came back 110 px low, the board's edges holding it: 21 Nov simulator).
+      cancelAnimationFrame(nudging);
+      camBack = heldCam;
+      heldCam = null;
+      holdOff = setTimeout(() => ((held = false), (camBack = null)), REST * 3); // after the last resize has rested
+    },
+    /** The camera glides by dy screen px (the keyboard is up: a draft pin comes above its sheet), past the board's edges if it must. */
+    nudge: (dy: number) => {
+      home ??= cam.y;
+      glide(cam.y + dy / cam.z);
+    },
+    /** …and back to where it was before; done once it is there (at once when it never left). */
+    nudgeBack: (done?: () => void) => {
+      const to = home;
+      if (to == null) return void (cancelAnimationFrame(nudging), done?.());
+      glide(to, () => ((home = null), done?.()));
+    },
     selected: () => selected,
     entered: () => entered,
     live: () => cards.filter((c) => c.frame).map((c) => c.f.id),
@@ -804,13 +869,39 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   // box's corner, nothing is fitted again, no frame is woken and the widget draws nothing but what the edge crosses.
   // Once it rests the board fits again (or is held to its edges, when the camera was moved), in one step (Leo, 19 Nov:
   // "when moving size of boards its sometimes flickering weirdly on some points": it fitted and drew all of it per step).
+  // The camera's glide up or down (api.nudge), not one frame (Leo, 21 Nov: "scrolling position to pin can be smoother"). It
+  // goes with a phone's keyboard and the comment's sheet, so it moves as they do: off at once and settling, about 0.3 s
+  // (eased in and out over 0.42 s it started after them and was still going when they had stopped). The camera alone: the
+  // widget moves the pins and the open box with it and draws nothing again (drawn again on each step, the box was made
+  // anew and took the cursor every frame of the glide).
+  let way: { from: number; to: number } | null = null; // the glide under way (the box changing size moves both ends with the camera)
+  const glide = (to: number, done?: () => void) => {
+    const g = (way = { from: cam.y, to });
+    cancelAnimationFrame(nudging);
+    const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.min(380, 240 + Math.abs(to - g.from) * cam.z * 0.3);
+    const t0 = performance.now();
+    const step = (now: number) => {
+      if (signal.aborted) return;
+      const k = ms ? Math.min(1, Math.max(0, (now - t0) / ms)) : 1; // (a frame's own time can be a little before t0: never backwards)
+      go({ ...cam, y: g.from + (g.to - g.from) * (1 - (1 - k) ** 3) }, false, true, true);
+      if (k < 1) return void (nudging = requestAnimationFrame(step));
+      nudging = 0;
+      if (way === g) way = null;
+      done?.();
+    };
+    step(t0);
+  };
   let sized = false;
   const ro = new ResizeObserver(() => {
     const [px, py, pv] = [ox, oy, view];
     measure();
-    if (!sized || !cards.length) return void ((sized = true), go(moved ? cam : fitAll(boxes(), view), false));
+    if (!sized || !cards.length) return void ((sized = true), go(moved || held ? cam : fitAll(boxes(), view), false));
     if (px === ox && py === oy && pv.w === view.w && pv.h === view.h) return; // already drawn at this size (resized(), below)
-    cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    cam = camBack || { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z };
+    if (home != null && !camBack) home -= (oy - py) / cam.z; // where the glide goes back to moves with the box, as the camera does
+    if (way && nudging && !camBack) [way.from, way.to] = [way.from - (oy - py) / cam.z, way.to - (oy - py) / cam.z];
+    camBack = null;
+    if (!sizing) sizedFrom = { w: pv.w, h: pv.h };
     sizing = boxed = true;
     cancelAnimationFrame(drawFrame);
     paintCam(); // now, before this frame is drawn (a frame later the frames would trail the edge by one step of the drag)

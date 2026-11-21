@@ -37,8 +37,11 @@ const dismiss = () => {
 // holds move by themselves. False when it can't (a pin being dragged): the caller draws everything again.
 const followCamera = () => {
   if (S.grabbing) return false;
+  // Only what is held to the board (onBoard: fixed, placed by its pin). A phone's sheet is not: it sits on the screen's
+  // bottom, and one sliding away has a top of its own for that, which the camera going back under it added 251 px to (it
+  // jumped up the screen and slid down from there: iOS 27 simulator, 21 Nov).
   const by = (n: HTMLElement | null | undefined, dx: number, dy: number) => {
-    if (!n?.style.left || !(dx || dy)) return;
+    if (!n?.style.left || n.style.position !== 'fixed' || !(dx || dy)) return;
     n.style.left = `${parseFloat(n.style.left) + dx}px`;
     n.style.top = `${parseFloat(n.style.top) + dy}px`;
   };
