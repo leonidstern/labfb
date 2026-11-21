@@ -56,61 +56,25 @@ const newerBuild = () => {
     return false;
   }
 };
-const HELP = `labit ${VERSION}: comment on local pages; your agent (Claude, Codex, Cursor…) answers on the pins.
-Run as npx @leonidstern/labit …, or node local.mjs … from a clone. Agents: labit skill prints how to work with it.
+const HELP = `labit ${VERSION}: comment on local pages; your agent answers on the pins (labit skill: how).
 
-  labit [--name "topic"] [--proxy [port]] [--port 4400] [--wifi | --no-wifi] [--no-open] [--new] [folder]
-      Run it in your project. With a dev server (Astro, Next, Vite…) running there, comments go on top of it
-      (--proxy <port> picks one), whatever HTML files the project has. A folder of HTML files with no dev server is served as it is.
-      --wifi: phones and laptops on the same wifi comment as guests, each with a one-time link (labit invite);
-      pages travel in the clear. On a running lab it restarts in place; --no-wifi turns it off.
-      A folder a lab already serves opens in that lab; --new starts a separate one.
-      --name: the lab's topic, shown in ⌘K instead of the folder.
-  labit publish <page.html | folder> [--name "topic"]
-      Show a page like an Artifact: it goes into your one pages lab (pagesFolder, ~/lab-pages); publish again
-      to update, same link. --dev: for working on labit itself (restarts when local.mjs or lib/ change).
-  labit list
-      Every lab on this computer: address, folder, pages, open comments. Check it before starting one.
-  labit pages [--all]
-      Write .lab/lab-pages.md: this folder's labs (--all: every lab) as links.
-  labit settings
-      Each setting, its value and source. See docs/settings.md.
-  labit skill
-      How an agent works with labit, printed: for an agent without the plugin.
-  labit preview [folder]
-      Add "lab" to .claude/launch.json, so the Claude desktop app opens the pages in its preview pane.
+  labit [folder] [--name topic] [--proxy [port]] [--port 4400] [--wifi|--no-wifi] [--no-open] [--new]
+  labit publish <page.html|folder> [--name topic] [--dev]
   labit invite [name] [--page /path]
-      A one-time link for a phone on the same wifi (one use, ten minutes); turns the wifi on first if needed.
+  labit list | pages [--all] | settings | skill | update | preview [folder]
 
-For the agent, from the project:
-  labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name <project>] [--model <your model>]
-      Ends with the next comment, printed in full. Run it in the background with --bg: without it a wait ends
-      after a minute, so the person's turn is never held open. Never wrap it in a shell loop: that keeps
-      listening after the session is gone. --pages: only these pages' pins. A pin with no reply for 2 minutes
-      goes to the next wait.
-  labit reply <id> "what you did" [--done | --on-it | --question] [--resolve] [--wait] [--page /path]
-      Answer on the pin by the id wait printed. --done closes it; --on-it: working; --question: you need the
-      person; --wait listens again right after.
-  labit reply <id> --progress "what you're on now"
-      One short status line for long work; an answer clears it.
-  labit reply <id> "question" --choice "A words" [--hint "why"] --choice "B words" [--recommend B]
-      2 to 6 choices; the pick comes back in your next wait as "Picked B: …". Make that change, then resolve.
+For the agent:
+  labit wait [--bg] [--timeout 1500] [--pages /a,/b] [--name project] [--model model]
+  labit reply <id> "text" [--done|--on-it|--question] [--resolve] [--wait] [--page /path]
+  labit reply <id> --progress "status" | "question" --choice A [--hint why] --choice B [--recommend B]
   labit resolve <id> [--page /path]
-  labit pin <selector> "text" [--page /path] [--at x,y] [--quote "words"] [--question | --choice "A" --choice "B" [--recommend B]] [--no-check]
-      Your own pin, one per point. --at: shares of the element (default 0.5,0.5). --quote: pin those words.
-  labit pin --file points.json [--page /path]
-      A list of { "selector", "text", "quote"?, "at"?, "page"?, "choices"?, "recommend"?, "question"? }.
-  labit pin --board <name> [--frame <id>] <selector|-> "text" [--at x,y]
-      On a board: a frame's element, a frame (-), or the board; --at in pixels.
-  labit update
-      Move this folder's lab onto the newer release its ⋯ menu offers.
-  labit board new|add|move|pick|list ...
-      Options, widths and flows as frames: new "<topic>" --of /page --variants 3 (edit the copies in
-      .lab/boards/<board>/) | --widths 390,820,1280 | --flow /a,/b,/c. add <board> <frame|/page|file.html|image>
-      [--label] [--width] [--after]; move <board> <frame> --after <frame>; pick <board> <frame>; list [<board>].
+  labit pin <selector> "text" [--page /path] [--at x,y] [--quote words] [--question|--choice …] [--no-check]
+  labit pin --file points.json | --board <name> [--frame <id>] <selector|-> "text"
+  labit board new topic --of /page [--variants 3|--widths 390,820|--flow /a,/b] | list [board]
+  labit board add <board> <frame|/page|file|image> [--label] [--width] [--after]
+  labit board move <board> <frame> --after <frame> | pick <board> <frame>
 
-.lab/ in the folder holds the comments (comments.md, comments/), archive/, state.json, server.json
-and key (owner-only). Delete it to start over.`;
+.lab/ holds the comments and state; delete it to start over.`;
 
 // ---------- arguments ----------
 const { opts, pos, unknownFlags } = parseArgs(process.argv.slice(2));
