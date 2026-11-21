@@ -24,18 +24,22 @@ export function startLive() {
     const key = 'lab-scroll:' + (window.name.startsWith('lab:') ? window.name + ':' : '') + location.pathname;
     // The page's own state that a reload would lose, each with its element (by id, or its place among its kind): a
     // scrolled box, an opened <details>, words typed in a field, a tick, a choice, the field with the cursor.
+    // A form with a field named "id" answers `form.id` with that field, so the id is read as the attribute it is.
+    const idOf = (x: any) => (x.nodeType === 1 && x.getAttribute('id')) || '';
+    // A select changed since its file: a lone select always shows its first option, which isn't a change.
+    const selDirty = (n: any) => (n.multiple ? [...n.options].some((o) => o.selected !== o.defaultSelected) : n.selectedIndex !== Math.max(0, [...n.options].findIndex((o) => o.defaultSelected)));
     const ofKind = (t: string) => [...document.getElementsByTagName(t)].filter((n) => n !== W.host);
     const pageState = () => {
       const out: any[] = [];
       for (const n of document.querySelectorAll('*') as NodeListOf<any>) {
         if (n === W.host || n === document.documentElement || n === document.body) continue;
-        const add = (kind: string, v: any) => out.length < 200 && out.push([n.id ? '#' + n.id : n.localName + ':' + ofKind(n.localName).indexOf(n), kind, v]);
+        const add = (kind: string, v: any) => out.length < 200 && out.push([idOf(n) ? '#' + idOf(n) : n.localName + ':' + ofKind(n.localName).indexOf(n), kind, v]);
         if (n.scrollTop || n.scrollLeft) add('s', [n.scrollTop, n.scrollLeft]);
         if (n.localName === 'details' && n.open) add('o', 1);
         if (!/^(input|textarea|select)$/.test(n.localName) || /^(password|file|hidden)$/.test(n.type)) continue;
         // Only what you changed: a field as its file has it follows the file after the reload.
         if (n.localName === 'select') {
-          if ([...n.options].some((o) => o.selected !== o.defaultSelected)) add('m', [...n.options].flatMap((o, i) => (o.selected ? [i] : [])));
+          if (selDirty(n)) add('m', [...n.options].flatMap((o, i) => (o.selected ? [i] : [])));
         } else if (/^(checkbox|radio)$/.test(n.type)) {
           if (n.checked !== n.defaultChecked) add('c', n.checked);
         } else if (n.value !== n.defaultValue && n.value.length < 5000) add('v', n.value);
@@ -296,10 +300,11 @@ export function startLive() {
         next.href = url.href;
         next.dataset.labSwap = '';
         const path = url.pathname;
-        next.addEventListener('load', () => {
+        // The old one goes a frame after the new one has loaded, not in the same task: livereload-js waits a few ms there in WebKit.
+        next.addEventListener('load', () => requestAnimationFrame(() => {
           for (const l of (document.querySelectorAll('link[rel~="stylesheet"][href]') as NodeListOf<HTMLLinkElement>)) if (l !== next && new URL(l.href, location.href).pathname === path) l.remove();
           delete next.dataset.labSwap;
-        }, { once: true });
+        }), { once: true });
         next.addEventListener('error', () => next.remove(), { once: true });
         link.after(next);
       }
@@ -375,8 +380,8 @@ export function startLive() {
     const keepOut = (n) => n === W.host || (n.nodeType === 1 && n.localName === 'script');
     // Old and new children are paired in order, looking a few ahead, so an added or removed element doesn't shift
     // everything after it (an open <details> further down stays the same element, and stays open).
-    const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && (o.nodeType !== 1 || (o.id || '') === (n.id || ''));
-    const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(o.id) || o.getAttribute('class') === n.getAttribute('class') : o.nodeType !== 3 || o.data === n.data);
+    const same = (o, n) => o.nodeType === n.nodeType && o.nodeName === n.nodeName && idOf(o) === idOf(n);
+    const alike = (o, n) => same(o, n) && (o.nodeType === 1 ? Boolean(idOf(o)) || o.getAttribute('class') === n.getAttribute('class') : o.nodeType !== 3 || o.data === n.data);
     const morphKids = (a, b) => {
       const olds = [...a.childNodes].filter((n) => !keepOut(n));
       const news = [...b.childNodes].filter((n) => !(n.nodeType === 1 && n.localName === 'script'));
@@ -390,7 +395,10 @@ export function startLive() {
       news.forEach((n, i) => {
         const o = olds[j];
         if (!o) return void (prev = put(n));
-        if (alike(o, n)) return void ((prev = morphNode(o, n)), j++);
+        // The same kind of node as many left on both sides: it is the same one, whatever changed on it (a row whose class changed
+        // keeps what was typed in it).
+        const left = (l, x) => l.filter((m) => same(m, x)).length;
+        if (alike(o, n) || (same(o, n) && left(olds.slice(j), n) === left(news.slice(i), n))) return void ((prev = morphNode(o, n)), j++);
         // The old one comes back a little later: this new one was added before it.
         if (news.slice(i + 1, i + 8).some((m) => alike(o, m))) return void (prev = put(n));
         // This new one is a little further on among the old ones: the ones before it were removed.
@@ -406,7 +414,7 @@ export function startLive() {
       for (const o of olds.slice(j)) o.remove();
     };
     const morphNode = (o, n) => {
-      if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || (o.nodeType === 1 && (o.id || '') !== (n.id || ''))) {
+      if (o.nodeType !== n.nodeType || o.nodeName !== n.nodeName || idOf(o) !== idOf(n)) {
         const c = document.importNode(n, true);
         o.replaceWith(c);
         return c;
@@ -416,12 +424,16 @@ export function startLive() {
         return o;
       }
       if (o.nodeType !== 1) return o;
+      if (o.isEqualNode(n)) return o; // the same inside and out: nothing to walk (Eleventy's dev server does this)
       // An opened <details> or <dialog> stays open (you opened it; the file doesn't say so).
       for (const { name } of Array.from(o.attributes as NamedNodeMap)) if (!n.hasAttribute(name) && !(name === 'open' && /^(details|dialog)$/.test(o.localName))) o.removeAttribute(name);
       for (const { name, value } of Array.from(n.attributes as NamedNodeMap)) if (o.getAttribute(name) !== value) o.setAttribute(name, value);
-      // What you're typing in, a playing video, a canvas, a web component's insides: left as they are.
-      if (o === document.activeElement || o.shadowRoot || /^(iframe|canvas|video|audio|textarea|select|input)$/.test(o.localName)) return o;
+      // A playing video, a canvas, a field's own value, a web component's insides: left as they are. What you typed stays,
+      // because only the file's text under a <textarea> and the options of a <select> follow it.
+      if (o.isContentEditable || o.shadowRoot || /^(iframe|canvas|video|audio|input|noscript)$/.test(o.localName)) return o;
+      const picked = o.localName === 'select' && selDirty(o) ? [...o.options].filter((x) => x.selected).map((x) => x.value) : null;
       morphKids(o, n);
+      if (picked) for (const x of o.options) x.selected = picked.includes(x.value);
       return o;
     };
     // A page with scripts of its own is reloaded instead: patching it toward its file would undo what its scripts built.
@@ -463,6 +475,8 @@ export function startLive() {
           const news = [...doc.head.querySelectorAll('style:not([data-lab])')];
           news.forEach((n, i) => (olds[i] ? olds[i].textContent !== n.textContent && (olds[i].textContent = n.textContent) : document.head.append(document.importNode(n, true))));
           for (const o of olds.slice(news.length)) o.remove();
+          for (const { name, value } of Array.from(doc.body.attributes)) if (document.body.getAttribute(name) !== value) document.body.setAttribute(name, value);
+          for (const { name } of Array.from(document.body.attributes)) if (!doc.body.hasAttribute(name)) document.body.removeAttribute(name);
           aroundMorph(() => morphKids(document.body, doc.body)); // a choice tried in the page: its words back first (thread.ts)
           if (mark?.isConnected) {
             const moved = mark.getBoundingClientRect().top - markTop;
