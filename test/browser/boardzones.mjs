@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish, withAlt } from './harness.mjs';
 
 const pw = playwright();
 const DIR = tmp('labit-boardzones-');
@@ -36,11 +36,13 @@ try {
       await open();
       const fa = await rect('a');
       // an area: from a quarter to three quarters of frame a
-      await p.mouse.move(fa.x + fa.w * 0.25, fa.y + fa.h * 0.25);
-      await p.mouse.down();
-      await p.mouse.move(fa.x + fa.w * 0.5, fa.y + fa.h * 0.5, { steps: 6 });
-      await p.mouse.move(fa.x + fa.w * 0.75, fa.y + fa.h * 0.75, { steps: 6 });
-      await p.mouse.up();
+      await withAlt(p, async () => {
+        await p.mouse.move(fa.x + fa.w * 0.25, fa.y + fa.h * 0.25);
+        await p.mouse.down();
+        await p.mouse.move(fa.x + fa.w * 0.5, fa.y + fa.h * 0.5, { steps: 6 });
+        await p.mouse.move(fa.x + fa.w * 0.75, fa.y + fa.h * 0.75, { steps: 6 });
+        await p.mouse.up();
+      });
       await until(async () => (await p.locator('textarea').count()) > 0);
       await p.keyboard.type('this area');
       await p.keyboard.press('Enter');

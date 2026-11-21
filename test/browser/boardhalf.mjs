@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish, withAlt } from './harness.mjs';
 
 const pw = playwright();
 
@@ -34,7 +34,7 @@ try {
       const note = async (x, y, words) => {
         const n = await pins();
         await sleep(200);
-        await p.mouse.click(x, y);
+        await withAlt(p, () => p.mouse.click(x, y));
         await sleep(400);
         await p.keyboard.type(words);
         await p.keyboard.press('Enter');

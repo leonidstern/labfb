@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish, withAlt } from './harness.mjs';
 import { png } from '../pictures.mjs';
 
 const pw = playwright();
@@ -63,7 +63,7 @@ try {
 
       // a pin on the picture is an ordinary board pin
       const r = await rect('c'); // on top of the frames it was pasted over
-      await p.mouse.click(r.x + r.w / 2, r.y + r.h / 2);
+      await withAlt(p, () => p.mouse.click(r.x + r.w / 2, r.y + r.h / 2));
       await p.waitForFunction(() => [...document.querySelectorAll('*')].some((n) => n.shadowRoot?.querySelector('textarea')), null, { timeout: 4000 }).catch(() => {});
       const area = p.locator('textarea').first();
       check(eng, 'a click on the picture opens the comment box', await area.count() > 0);
@@ -136,11 +136,13 @@ try {
       await p.mouse.move(5, 5);
       const rc = await rect('c');
       // (the part of c the pictures pasted over it, d and e, do not cover: 72%–83% across, 60%–72% down)
-      await p.mouse.move(rc.x + rc.w * 0.72, rc.y + rc.h * 0.6);
-      await p.mouse.down();
-      await p.mouse.move(rc.x + rc.w * 0.78, rc.y + rc.h * 0.66, { steps: 6 });
-      await p.mouse.move(rc.x + rc.w * 0.83, rc.y + rc.h * 0.72, { steps: 6 });
-      await p.mouse.up();
+      await withAlt(p, async () => {
+        await p.mouse.move(rc.x + rc.w * 0.72, rc.y + rc.h * 0.6);
+        await p.mouse.down();
+        await p.mouse.move(rc.x + rc.w * 0.78, rc.y + rc.h * 0.66, { steps: 6 });
+        await p.mouse.move(rc.x + rc.w * 0.83, rc.y + rc.h * 0.72, { steps: 6 });
+        await p.mouse.up();
+      });
       await until(async () => (await p.locator('textarea').count()) > 0);
       await p.keyboard.type('this part');
       await p.keyboard.press('Enter');
@@ -158,7 +160,7 @@ try {
       await p.keyboard.press('Shift+Digit1'); // fit all
       await sleep(600);
       const rbn = await rect(banner.id);
-      await p.mouse.click(rbn.x + rbn.w / 2, rbn.y + 3); // on the bar above the picture
+      await withAlt(p, () => p.mouse.click(rbn.x + rbn.w / 2, rbn.y + 3)); // on the bar above the picture
       await until(async () => (await p.locator('textarea').count()) > 0);
       await p.keyboard.type('bar');
       await p.keyboard.press('Enter');

@@ -28,17 +28,18 @@ const AT_ONCE = coarse ? 1 : 2; // frames loading at once
 const WAKE = coarse ? 56 : 120; // a frame is woken when it is in view and at least this many screen px wide (a phone: every frame fitted, live)
 
 const css = `
-#lab-board{position:fixed;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;background:#f7f7f7;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif;overscroll-behavior:none}
+#lab-board{position:fixed;inset:0;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;cursor:default;background:#f7f7f7;color:#1d1d1b;font:13px/1.35 system-ui,-apple-system,sans-serif;overscroll-behavior:none}
 @media (prefers-color-scheme:dark){#lab-board{background:#1b1b1a;color:#e9e8e4}}
 #lab-board .dots{position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(circle,var(--lab-black-2,rgba(0,0,0,.1)) .5px,transparent 1px)}
 @media (prefers-color-scheme:dark){#lab-board .dots{background-image:radial-gradient(circle,var(--lab-white-2,rgba(255,255,255,.1)) .5px,transparent 1px)}}
 #lab-board .world{position:absolute;left:0;top:0;transform-origin:0 0}
+#lab-board.alt{cursor:inherit}
 #lab-board.grab,#lab-board.grab *{cursor:grab!important}
 #lab-board.grab.grabbing,#lab-board.grab.grabbing *{cursor:grabbing!important}
 #lab-board .f{position:absolute;outline:calc(1px*var(--iz,1)) solid rgba(0,0,0,.08)}
 #lab-board .b{position:absolute;inset:0;background:#fff;contain:layout paint}
 #lab-board .f.off{content-visibility:hidden}
-#lab-board .f.sel{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
+#lab-board .f.sel,#lab-board .f.pick{outline:calc(2px*var(--iz)) solid #1f7a4d;outline-offset:calc(1px*var(--iz))}
 #lab-board iframe,#lab-board img{position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;pointer-events:none}
 #lab-board .f.in iframe{pointer-events:auto}
 #lab-board .t{position:absolute;left:0;bottom:100%;white-space:nowrap;max-width:calc(100% / var(--iz));overflow:hidden;text-overflow:ellipsis;transform-origin:0 100%;transform:scale(var(--iz));padding-bottom:4px;opacity:.75}
@@ -58,9 +59,6 @@ const css = `
 #lab-board.drop{outline:2px solid #1f7a4d;outline-offset:-2px}
 #lab-board .ghost{position:absolute;width:200px;height:120px;margin:-60px 0 0 -100px;display:grid;place-items:center;border:calc(1px*var(--iz,1)) dashed currentColor;background:rgba(127,127,127,.12);font-size:calc(14px*var(--iz,1));opacity:.8;pointer-events:none}
 #lab-board .note{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;max-width:calc(100% - 32px);padding:8px 12px;border-radius:8px;background:#1d1d1b;color:#fff;pointer-events:none}
-#lab-board .f .rm{position:absolute;right:0;bottom:100%;transform-origin:100% 100%;transform:scale(var(--iz,1));margin-bottom:3px;width:22px;height:22px;padding:0;border:0;border-radius:50%;font:inherit;line-height:22px;cursor:pointer;color:inherit;background:rgba(127,127,127,.22);opacity:0}
-#lab-board .f:hover .rm,#lab-board .f .rm:focus-visible{opacity:1}
-@media (pointer:coarse){#lab-board .f .rm{opacity:.7}}
 #lab-board .done{position:absolute;top:max(12px,env(safe-area-inset-top));left:12px;z-index:5;font:inherit;color:inherit;background:none;border:0;padding:8px;text-decoration:underline;cursor:pointer}
 `;
 
@@ -113,14 +111,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   measure();
   let latest: Board | null = null; // the board as last read: its rev and frames, for a change written back (a picture taken off)
-  let over = ''; // the frame under the pointer
   const taken: { id: string; x?: number; y?: number }[] = []; // pictures this browser took off, newest last: ⌘Z puts the last one back
   let moved = false; // the person moved the camera: a resize no longer fits everything again
-  let sizedFrom = { w: 0, h: 0 }; // the box's size when its resize began
   let heldCam: Cam | null = null; // the camera when the hold began
   let camBack: Cam | null = null; // where the next resize puts it (the hold let go)
   let held = false; // a resize that isn't the person's (a phone's keyboard growing a half view): the board stays where it is on the screen
   let selected = '';
+  let picked = ''; // the frame a click picked (its ring): Backspace or Delete takes it off the board
   let entered = '';
   let focus = false; // the camera is fitted to one frame (a phone's first view, Tab): a swipe goes to the next
   let lastDown = 0;
@@ -193,12 +190,11 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (left > 1) return void (still = setTimeout(rest, left));
     if (sizing) {
       sizing = false;
-      // Only the height, and by no more than a phone's toolbar does as the page scrolls (40 px on iOS 27): the board stays
-      // where it is on the screen. Fitted again, it went through three places and ended 15 px off (21 Nov simulator).
-      const bar = view.w === sizedFrom.w && Math.abs(view.h - sizedFrom.h) <= 100;
       // Held (a phone's keyboard): it stays as it is, where the hold or its glide put it. Fitted or held to its edges again
       // here, mid-glide, it jumped 68 px and the widget drew everything again (21 Nov simulator).
-      if (!held) return go(moved || bar ? cam : fitAll(boxes(), view), false); // (which rests again, and lets the layer go then)
+      // Never fitted again: what is on the board keeps its zoom when the view is resized (Leo, 21 Nov: "do not zoom images on
+      // board on resize board").
+      if (!held) return go(cam, false); // (which rests again, and lets the layer go then)
     }
     layered = false;
     world.style.willChange = '';
@@ -333,12 +329,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       const tag = text('div', '', box);
       tag.className = 't';
       tag.setAttribute('data-uncommentable', ''); // the label opens its frame: no pin there
-      if (f.kind === 'image') {
-        const rm = Object.assign(document.createElement('button'), { className: 'rm', type: 'button', textContent: '×', title: 'take this picture off the board (⌘Z brings it back)' });
-        rm.setAttribute('data-uncommentable', '');
-        rm.addEventListener('click', () => void setState(f.id, 'archived'));
-        box.append(rm);
-      }
       world.append(box);
       return c;
     });
@@ -349,6 +339,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       paint(c);
     }
     if (selected && !cards.some((c) => c.f.id === selected)) selected = entered = '';
+    pickFrame(picked);
     world.querySelector('.none')?.remove();
     if (!cards.length) text('div', 'No frames on this board.', world).className = 'none';
     measure(); // the box as it is now, for the fit
@@ -396,9 +387,14 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   const paint = (c: Card) => ((c.box.querySelector('.t') as HTMLElement).textContent = label(c.f));
 
   // ---------- the frame the camera is on, and entering ----------
-  // Frames aren't selected (Leo, 20 Nov: "do not select frames"): a click on the board pins, as on a page. \`selected\` is
-  // only the frame Tab last moved to, never drawn; the open (entered) frame wears the ring.
+  // \`selected\` is the frame Tab last moved to; the open (entered) frame and the picked one wear the ring.
   const find = (id: string) => cards.find((c) => c.f.id === id);
+  // A click on a frame picks it, a click on the canvas lets it go; Backspace or Delete then takes it off the board (Leo,
+  // 21 Nov: "no need this on board > select and delete", the × over a picture's corner).
+  function pickFrame(id: string) {
+    picked = find(id) ? id : '';
+    for (const c of cards) c.box.classList.toggle('pick', c.f.id === picked);
+  }
   function select(id: string) {
     if (entered && entered !== id) leave();
     selected = id;
@@ -451,7 +447,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     zoomBox.append(b);
   }
   root.append(zoomBox);
-  const ours = (e: Event) => inside(e, zoomBox) || (src(e) as Element).classList?.contains('rm'); // its own clicks (and a picture's ×), not the board's
+  const ours = (e: Event) => inside(e, zoomBox); // its own clicks, not the board's
 
   // ---------- input: the board owns its surface (these run before the widget's own listeners) ----------
   // Points are the box's own: the screen's less where the box is.
@@ -468,12 +464,12 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let holdTimer = 0;
   // A phone comments by holding, as on a page (Leo, 19 Nov: "can't leave a comment" on the board): a finger that stays
   // put for 400 ms with comments on drops a pin there; moving first is a pan or a swipe, as before.
-  const boardWidget = () => (window as unknown as { __labBoardWidget?: { dismiss?: () => boolean; pinning: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
+  const boardWidget = () => (window as unknown as { __labBoardWidget?: { dismiss?: () => boolean; pinning: () => boolean; drawing?: () => boolean; holding?: () => boolean; hold?: (x: number, y: number) => void; place: (x: number, y: number) => void } }).__labBoardWidget;
   let tap = { at: 0, x: 0, y: 0 };
   let pinch = 0;
-  // On a computer a plain mouse drag is labit's, as on a page (a click pins, a drag marks an area, a click selects); the
-  // board pans with Space held and a drag (the hand), or a trackpad's two fingers / the wheel (Leo, 19 Nov: "like the
-  // sketch"). A finger still pans, and a hold pins.
+  // On a computer a plain drag pans the board, as Space and a drag (the hand) or a trackpad's two fingers / the wheel do;
+  // ⌥ makes a click a pin and a drag an area, the widget's (Leo, 21 Nov: "regular cursor to operate on boards opt to call
+  // comment"). A finger pans, and a hold pins.
   let space = false;
   let theirs = false; // this press went to the widget (comment mode): its click isn't eaten
   // While Space is held one still layer lies over the whole board, frames and pins included, with the hand on it: no
@@ -501,19 +497,22 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   let last: { x: number; y: number } | null = null;
   // ⌥ held (a paste event doesn't carry it: the keys before it do): the picture's own comment box opens on it, as ⌥-click opens one.
   let alt = false;
-  on('keydown', (e: KeyboardEvent) => void (alt = e.altKey), true);
-  on('keyup', (e: KeyboardEvent) => void (alt = e.altKey), true);
-  on('blur', () => void (alt = false));
-  on('pointermove', (e: PointerEvent) => void ((last = inBox(e.clientX, e.clientY) ? { x: e.clientX, y: e.clientY } : null), (over = last ? at(e) : '')), true);
+  // The board has the plain pointer, to pan and look; ⌥ held gives it the pin pointer (the page's, inherited) and a click
+  // then comments (Leo, 21 Nov: "regular cursor to operate on boards opt to call comment").
+  const setAlt = (v: boolean) => root.classList.toggle('alt', (alt = v));
+  on('keydown', (e: KeyboardEvent) => setAlt(e.altKey), true);
+  on('keyup', (e: KeyboardEvent) => setAlt(e.altKey), true);
+  on('blur', () => setAlt(false));
+  on('pointermove', (e: PointerEvent) => void (setAlt(e.altKey), (last = inBox(e.clientX, e.clientY) ? { x: e.clientX, y: e.clientY } : null)), true);
 
   on('pointerdown', (e: PointerEvent) => {
     if (!mine(e) || ours(e) || entered && src(e) instanceof HTMLIFrameElement) return;
     if (zoomBox.classList.contains('open')) zoomBox.classList.remove('open');
     measure();
     theirs = false;
-    if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget() && (e.altKey || boardWidget()!.pinning())) {
+    if (e.pointerType !== 'touch' && !space && !pts.size && boardWidget() && (e.altKey || boardWidget()!.drawing?.())) {
       lastDown = performance.now();
-      theirs = true; // comment mode or Option, no Space: the widget's own click (a pin) and drag (an area)
+      theirs = true; // ⌥ (or D, drawing), no Space: the widget's own click (a pin) and drag (an area, or ink)
       return;
     }
     eat(e);
@@ -528,7 +527,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
       if (down) down.far = true; // a second finger: this was no tap
     } else {
       // A frame stays where the board put it: no drag moves one (Leo, 19 Nov: "make it simpler here, dont allow moving frames").
-      down = { x: e.clientX, y: e.clientY, id: at(e), far: false, at: performance.now(), t: e.timeStamp, hand: e.pointerType === 'touch' || space };
+      down = { x: e.clientX, y: e.clientY, id: at(e), far: false, at: performance.now(), t: e.timeStamp, hand: true }; // a plain drag pans, mouse or finger
       hand();
       clearTimeout(holdTimer);
       if (e.pointerType === 'touch') {
@@ -596,8 +595,8 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     // An open comment or the chat: this tap only closes it, as a click outside one does on a page (Leo, 19 Nov: "clicking
     // outside comment should work here same as on page", "same with chat"). A drag (a pan) is no tap and closes nothing.
     if (widget?.dismiss?.()) return;
-    if (widget?.pinning() && e.pointerType !== 'touch') return widget.place(e.clientX, e.clientY); // comments are on and in comment mode: a tap is a pin
-    // No pin (comments hidden, or a finger): a double tap opens the frame under it to use it; a single one does nothing.
+    if (!coarse) pickFrame(d.id); // a click picks the frame under it (or none)
+    // A double tap opens the frame under it to use it.
     const again = performance.now() - tap.at < 350 && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 24;
     tap = { at: performance.now(), x: e.clientX, y: e.clientY };
     if (again && d.id) enter(d.id);
@@ -670,6 +669,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     else if (e.key === 'Escape') {
       // Heard in the frame, which keeps an Esc its page used (a menu closing) to itself: this one is ours.
       if (entered) leave();
+      else if (picked) pickFrame('');
       else if (opts.back && !coarse) back(); // an empty board's Esc goes back to the page, as ⇧B does
       else return false;
     } else return false;
@@ -704,7 +704,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     setTimeout(() => n.remove(), 3000);
   };
   // A picture off the board (archived: its file stays) and back: the owner's (this computer's browser, or a device with a pass),
-  // by the × over its corner or Backspace / Delete with the pointer on it; ⌘Z puts the last one back where it was.
+  // by Backspace / Delete with it picked (a click on it); ⌘Z puts the last one back where it was.
   const setState = async (id: string, state: 'archived' | 'live', at?: { x?: number; y?: number }) => {
     if (!latest) return;
     const was = latest.frames.find((f) => f.id === id);
@@ -721,12 +721,12 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   if (!coarse) {
     on('keydown', (e: KeyboardEvent) => {
       if (typing(e) || entered) return;
-      const gone = (e.key === 'Backspace' || e.key === 'Delete') && !e.metaKey && !e.ctrlKey && !e.altKey && find(over)?.f.kind === 'image';
+      const gone = (e.key === 'Backspace' || e.key === 'Delete') && !e.metaKey && !e.ctrlKey && !e.altKey && Boolean(find(picked));
       const back = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.code === 'KeyZ' && taken.length > 0;
       if (!gone && !back) return;
       e.preventDefault();
       const last = gone ? null : taken.pop()!;
-      void (last ? setState(last.id, 'live', { x: last.x, y: last.y }) : setState(over, 'archived'));
+      void (last ? setState(last.id, 'live', { x: last.x, y: last.y }) : setState(picked, 'archived'));
     });
   }
   // One picture to the board at a world point, a ghost there while it goes; the board is read again as soon as it is there.
@@ -901,7 +901,6 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     if (home != null && !camBack) home -= (oy - py) / cam.z; // where the glide goes back to moves with the box, as the camera does
     if (way && nudging && !camBack) [way.from, way.to] = [way.from - (oy - py) / cam.z, way.to - (oy - py) / cam.z];
     camBack = null;
-    if (!sizing) sizedFrom = { w: pv.w, h: pv.h };
     sizing = boxed = true;
     cancelAnimationFrame(drawFrame);
     paintCam(); // now, before this frame is drawn (a frame later the frames would trail the edge by one step of the drag)
@@ -932,13 +931,13 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     for (const c of cards) c.frame?.remove();
     root.replaceChildren();
   };
-  // The box was set to a new size in one step (a view's half and full): fitted again and drawn now, in the frame that has
+  // The box was set to a new size in one step (a view's half and full): drawn now at the same zoom, in the frame that has
   // the new size, not once the box has rested (the board is in its old place and size for 200 ms, then jumps to its fit).
   const resized = () => {
     const [px, py] = [ox, oy];
     measure();
     if (!cards.length) return;
-    cam = moved ? { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z } : fitAll(boxes(), view);
+    cam = { ...cam, x: cam.x - (ox - px) / cam.z, y: cam.y - (oy - py) / cam.z }; // the same zoom, the board where it was on the screen
     go(cam, false);
     [whole, boxed] = [false, true]; // told as the box changing with the camera, as a dragged edge is (the page's pins under it hide or show)
     cancelAnimationFrame(drawFrame);

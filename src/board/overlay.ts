@@ -24,27 +24,30 @@ const CSS = `
 :host{all:initial!important;opacity:var(--bv-o,1)!important;translate:0 calc(var(--bv-pan,0px) + var(--bv-y,0px))!important;clip-path:var(--bv-clip,none)!important;transition:clip-path var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1),translate var(--bv-t,0ms) var(--bv-e,cubic-bezier(.32,.72,0,1))!important;display:flex!important;flex-direction:column!important;position:fixed!important;left:0!important;right:0!important;bottom:0!important;height:var(--bv-h,100%)!important;zoom:var(--bv-z,1)!important;z-index:2147482000!important;overscroll-behavior:none!important;background:#f7f7f7!important;color:#1d1d1b!important;box-shadow:0 -1px 0 rgba(0,0,0,.12),0 -8px 24px rgba(0,0,0,.08)!important;font:500 13px/1 system-ui,-apple-system,sans-serif!important;direction:ltr!important;cursor:inherit!important}
 .bv-bar{position:relative;flex:none;touch-action:none;display:flex;align-items:center;gap:6px;height:40px;padding:0 8px;background:inherit;border-bottom:1px solid rgba(0,0,0,.08);translate:0 var(--bv-bar,0px);transition:translate var(--bv-clip-t,0s) cubic-bezier(.32,.72,0,1)}
 :host(.full) .bv-bar{height:calc(40px + env(safe-area-inset-top,0px));padding-top:env(safe-area-inset-top,0px)}
-.bv-bar button{font:inherit;color:inherit;background:transparent;border:0;border-radius:999px;padding:7px 11px;cursor:pointer}
-.bv-bar button:hover{background:rgba(0,0,0,.06)}
-.bv-name{flex:1;text-align:center;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
+.bv-bar button{font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;color:inherit;background:transparent;border:0;border-radius:6px;padding:5px 10px;cursor:pointer;transition:background-color var(--lab-t-quick,120ms) var(--lab-ease-out,cubic-bezier(0,0,.58,1))}
+.bv-bar button:hover{background:var(--lab-hover,rgba(0,0,0,.10))}
+.bv-bar button:focus-visible{outline:2px solid currentColor;outline-offset:2px}
+.bv-name{flex:1;text-align:center;font:400 14px/1.4 var(--lab-font,system-ui,-apple-system,sans-serif);letter-spacing:-.011em;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:normal}
 .bv-grip{position:absolute;left:0;right:0;top:-5px;height:10px;cursor:ns-resize;touch-action:none;z-index:1}
 .bv-grip::after{content:"";position:absolute;left:50%;top:7px;width:36px;height:4px;margin-left:-18px;border-radius:2px;background:currentColor;opacity:.25}
 :host(.full) .bv-grip{top:env(safe-area-inset-top,0px)}
 :host(.full) .bv-grip::after{top:3px}
+@media (pointer:fine){.bv-bar{cursor:ns-resize}.bv-grip{top:-10px;height:20px}.bv-grip::after{top:12px}:host(.full) .bv-grip::after{top:8px}}
 .bv-box{position:relative;flex:1;min-height:0}
 .bv-box #lab-board{position:absolute}
 @media (pointer:coarse){.bv-bar{z-index:1}.bv-bar button{position:relative;z-index:2;min-width:44px}.bv-bar button::before{content:"";position:absolute;left:0;right:0;top:-9px;bottom:-12px}}
-@media (prefers-color-scheme:dark){:host{background:#1b1b1a!important;color:#e9e8e4!important}.bv-bar button:hover{background:rgba(255,255,255,.08)}.bv-bar{border-color:rgba(255,255,255,.08)}}
+@media (prefers-color-scheme:dark){:host{background:#1b1b1a!important;color:#e9e8e4!important}.bv-bar button:hover{background:var(--lab-hover,rgba(255,255,255,.10))}.bv-bar{border-color:rgba(255,255,255,.08)}}
 `;
 const MIN = 0.25; // the least of the window it is dragged down to
+const HALF = 0.5; // a board opens at half height, the page above it, until it is set otherwise (Leo, 21 Nov: "open boards half not full by default")
 const EDGE = 280; // ms: a half view's top edge going up as the keyboard comes, and back down after
 const sizeKey = (page: string) => `lab-board-size:${page}`;
 const readSize = (page: string) => {
   try {
     const v = parseFloat(localStorage.getItem(sizeKey(page)) || '');
-    return v >= MIN && v <= 1 ? v : 1;
+    return v >= MIN && v <= 1 ? v : HALF;
   } catch {
-    return 1;
+    return HALF;
   }
 };
 const saveSize = (page: string, v: number) => {
@@ -91,7 +94,7 @@ export function show(name: string, o: Opts) {
   const title = Object.assign(document.createElement('span'), { className: 'bv-name', textContent: `board ${name}` });
   let size = o.own ? 1 : readSize(o.page);
   const toggle = btn('', 'full or half', () => {
-    size = size >= 1 ? 0.5 : 1;
+    size = size >= 1 ? HALF : 1;
     saveSize(o.page, size);
     paintSize();
     // One step, so fitted in this same frame: where the view is is read now (it is asked for by the board's pins), and the
@@ -367,7 +370,29 @@ export function show(name: string, o: Opts) {
     view.style.setProperty('--bv-o', '0');
     requestAnimationFrame(fade);
   }
-  cur = { name, view, destroy: () => (ro.disconnect(), removeEventListener('focusin', focused), vv?.removeEventListener('resize', watch), vv?.removeEventListener('scroll', watch), cancelAnimationFrame(loop), board.destroy()), onClose: o.onClose, restoration, pushed };
+  // A click on the page behind a half view closes the board, and only that: no pin, no link (Leo, 21 Nov: "clicking on
+  // the page behind board should close the board"). An open comment or the chat goes first, as a click outside one does.
+  // The widget's own buttons still work. A finger's tap on the page only reads, as on a page (phones close by the bar).
+  let swallow = false;
+  const behind = (e: PointerEvent) => {
+    swallow = false;
+    if (e.pointerType === 'touch' || e.button !== 0 || size >= 1 || o.own || e.altKey) return;
+    const path = e.composedPath();
+    if (path.includes(view) || path.some((n) => n instanceof Element && n.hasAttribute('data-lab-comments'))) return;
+    swallow = true;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    if (!(window as unknown as { __labBoardWidget?: { dismiss?: () => boolean } }).__labBoardWidget?.dismiss?.()) close();
+  };
+  const eat = (e: Event) => {
+    if (!swallow) return;
+    if (e.type === 'click') swallow = false;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+  addEventListener('pointerdown', behind, true);
+  for (const t of ['mousedown', 'pointerup', 'mouseup', 'click']) addEventListener(t, eat, true);
+  cur = { name, view, destroy: () => (removeEventListener('pointerdown', behind, true), ['mousedown', 'pointerup', 'mouseup', 'click'].forEach((t) => removeEventListener(t, eat, true)), ro.disconnect(), removeEventListener('focusin', focused), vv?.removeEventListener('resize', watch), vv?.removeEventListener('scroll', watch), cancelAnimationFrame(loop), board.destroy()), onClose: o.onClose, restoration, pushed };
   moved();
 }
 

@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { claimPort } from './port.mjs';
-import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish } from './harness.mjs';
+import { playwright, engines, tmp, labEnv, startLab, labUp, sleep, check, finish, withAlt } from './harness.mjs';
 
 const pw = playwright();
 
@@ -48,7 +48,7 @@ try {
       check(eng, 'the link opens the board over the same page, one widget', st.path === '/canvas' && st.hash === '#board=pricing' && st.view && st.pills === 1, JSON.stringify(st));
       // a tap on frame b pins
       const b = await p.evaluate(() => { const r = document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board .f[data-id="b"]').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width }; });
-      await p.mouse.click(b.x + 60, b.y + 80);
+      await withAlt(p, () => p.mouse.click(b.x + 60, b.y + 80));
       await sleep(400);
       await p.keyboard.type('frame b note');
       await p.keyboard.press('Enter');
