@@ -39,7 +39,7 @@ import { holdWhileOpen } from './widget/hold.ts';
 import { inkSvg } from './widget/ink.ts';
 import { bindActions } from './widget/actions.ts';
 import { bindDrag, draftHasText, endDrag, inkSaid, offerSelection, startDrag } from './widget/drag.ts';
-import { bindBoardCam, showBoard } from './widget/boardcam.ts';
+import { bindBoardCam, pinBoard, showBoard } from './widget/boardcam.ts';
 import { bindFramework, overFramework, scanForFramework } from './widget/framework.ts';
 import { bindKeys } from './widget/keys.ts';
 
@@ -172,6 +172,7 @@ import { bindKeys } from './widget/keys.ts';
   } catch {}
   // Your one list of actions (settings.json `actions`, passed as data-actions; lib/actions.ts, docs/settings.md): as many
   // chips as fit, the rest behind "…".
+  const BOARD_ACT = '+board: the person put references for this pin on its board (listed under the pin as "board for this pin"): use them';
   const actButton = (name) => el('button', { type: 'button', 'data-k': name }, name);
   let LIST = [];
   try {
@@ -1206,6 +1207,7 @@ import { bindKeys } from './widget/keys.ts';
         onSubmit: async (name, said) => {
           const { comment, edit } = await send({ name, text: said, anchor });
           if (edit) store.set(`lab-edit:${comment.id}`, edit); // lets this browser drag the pin later
+          if (anchor.act === BOARD_ACT) void pinBoard(comment.id, true);
           addComment(comment);
           markSeen([comment]);
           S.draft = null;
@@ -1658,6 +1660,9 @@ import { bindKeys } from './widget/keys.ts';
     // Your list, in its order, as many chips as fit on one line (measured); the ones that don't fit are not shown. The
     // list itself is set in labit.json or your settings.json (`actions`, docs/settings.md): nothing on the page edits it.
     const chips = LIST.map(chip);
+    // +board (this computer, on a page): the pin goes with its own board, which opens for pictures and pages; the lab
+    // gives the pin to the agent when that board is closed (Leo, 21 Nov: "maybe just as action? +board?").
+    if (adminToken && !S.board && draft.anchor.kind !== 'board') row.append(chip({ name: '+board', prompt: BOARD_ACT }));
     row.append(...chips);
     let tries = 0;
     const measure = () => {

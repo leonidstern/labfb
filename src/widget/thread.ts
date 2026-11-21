@@ -2,7 +2,7 @@
 import { bindTrial, keptRow, onReshow, triesInPlace, tryRow, untry } from './trial.ts';
 import { stickToEnd } from './stick.ts';
 import { heldPin, holdBox, letBox } from './pinhold.ts';
-import { showBoard } from './boardcam.ts';
+import { pinBoard } from './boardcam.ts';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let W: any;
@@ -386,11 +386,13 @@ export function threadCard(c, fresh = new Set(), focus = false) {
     // Asked in the card itself, not the browser's dialog: the row swaps to the question, same height, nothing moves.
     const yes = W.el('button', { class: 'btn danger', type: 'button' }, 'delete');
     const no = W.el('button', { class: 'btn', type: 'button' }, 'cancel');
+    let was = [resolve, del]; // the row as it was before the question (Do it, board and undo too)
     const back = () => {
-      actions.replaceChildren(resolve, del);
+      actions.replaceChildren(...was);
       del.focus();
     };
     del.addEventListener('click', () => {
+      was = [...actions.children];
       actions.replaceChildren(W.el('span', { class: 'ask' }, W.repliesOf(c.id).length ? 'delete thread?' : 'delete comment?'), yes, no);
       no.focus();
     });
@@ -452,23 +454,21 @@ export function threadCard(c, fresh = new Set(), focus = false) {
         failed(doIt);
       }
     });
-    // The pin's own board (this computer only, Leo 21 Nov: "add board for agent with pictures and stuff"): made by the lab
-    // the first time, opened over the page after; what is put on it reaches the agent with this pin (pinBoards, local.mjs).
-    const own = W.adminToken && !W.S.board && c.anchor?.kind !== 'board' ? W.el('button', { class: 'btn', type: 'button' }, 'board') : null;
-    own?.addEventListener('click', async () => {
-      const name = `pin-${c.id}`;
-      try {
-        const r = await fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'new', name, of: `${W.S.page}#${name}` }) });
-        if (!r.ok) throw new Error(String(r.status));
-        W.S.openId = null;
-        W.render();
-        void showBoard(name);
-      } catch {
-        failed(own);
-      }
-    });
-    actions.append(...(doIt ? [doIt] : []), first, ...(own ? [own] : []), ...(W.S.isAdmin ? [del] : []));
+    actions.append(...(doIt ? [doIt] : []), first, ...(W.S.isAdmin ? [del] : []));
     body.append(actions);
+  }
+  // The pin's own board, made by +board as the pin was sent (src/comments.js): a "board" key opens it again, once the
+  // lab says there is one (for a guest too: anyone may look at a board).
+  if (!W.S.board && c.anchor?.kind !== 'board') {
+    const own = W.el('button', { class: 'btn', type: 'button', hidden: '' }, 'board');
+    own.addEventListener('click', () => {
+      W.S.openId = null;
+      W.render();
+      void pinBoard(c.id);
+    });
+    const row = actions || body.appendChild(W.el('div', { class: 'row acts', hidden: '' }));
+    row.insertBefore(own, W.S.isAdmin ? row.lastChild : null); // before delete
+    fetch(`/_lab/api/board?name=pin-${c.id}`).then((r) => r.ok && (own.hidden = row.hidden = false), () => {});
   }
   // Phones: step through the threads from the sheet (J and K on a keyboard).
   if (W.coarse) {

@@ -12,11 +12,19 @@ let S: any; // the widget's state (W.S), read once at startup
 // reload, a forward) or a board pin picked in the list opens it. Closing it lets go of a board pin that was open.
 export const showBoard = (name: string, of = '', push = true) =>
   W.part('boardview').then((m) => m.show(name, { page: S.page, of, push, onClose: () => {
+    // A pin's board closed: its +board pin goes to the agent now (the lab held it, local.mjs filling).
+    if (/^pin-/.test(name) && W.adminToken) fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'ready', name }) }).catch(() => {});
     const open = S.comments.find((c) => c.id === S.openId);
     if (open?.anchor?.kind === 'board') S.openId = null;
     if (S.draft?.anchor?.kind === 'board') S.draft = null;
     W.render();
   } }), () => W.say("the board couldn't load"));
+/** A pin's own board, pin-<id>, about the page at #pin-<id>: made first when asked (+board, this computer), then opened. */
+export const pinBoard = async (id: string, make = false) => {
+  const name = `pin-${id}`;
+  if (make && !(await fetch('/_lab/api/board', { method: 'POST', headers: W.headers(), body: JSON.stringify({ action: 'new', name, of: `${S.page}#${name}` }) }).catch(() => null))?.ok) return W.say("the board couldn't be made");
+  return showBoard(name);
+};
 // A tap on the board outside an open comment or the chat closes it, as a click outside one does on a page (onPageClick,
 // and the chat's own press above); the board's surface eats its presses, so it asks here (Leo, 19 Nov). True when
 // something closed: that tap only closes, a sent pin's undo card too (as on a page: the sent pin stays, no new one).

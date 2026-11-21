@@ -69,3 +69,15 @@ test('the lab\'s list of boards leaves the pin\'s own out', async () => {
   const pages = await (await fetch(`${B}/_lab/pages`)).json();
   assert.deepEqual(pages.boards, []);
 });
+
+test('a pin sent with +board waits for its board to close before the agent gets it', async () => {
+  const pending = async () => (await (await fetch(`${B}/_lab/pending`, { headers: { 'x-lab-admin': keys().agent, 'x-lab-agent': '1' } })).json()).fresh;
+  const before = await pending();
+  const r = await fetch(`${B}/_lab/api/comments`, { method: 'POST', headers: { 'content-type': 'application/json', origin: B, 'x-lab-admin': keys().token }, body: JSON.stringify({ page: '/pricing', name: 'Leo', text: '+board', anchor: { kind: 'element', selector: 'h1', x: 0.5, y: 0.5, act: '+board: the person put references for this pin on its board' } }) });
+  assert.equal(r.status, 201);
+  const { comment } = await r.json();
+  assert.equal(await pending(), before, 'held while its board is open');
+  assert.equal((await post({ action: 'ready', name: `pin-${comment.id}` }, {})).status, 403, 'only this computer closes it');
+  assert.equal((await post({ action: 'ready', name: `pin-${comment.id}` }, { 'x-lab-admin': keys().token })).status, 200);
+  assert.equal(await pending(), before + 1, 'the agent gets it once the board is closed');
+});

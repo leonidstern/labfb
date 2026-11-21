@@ -1680,7 +1680,11 @@ const rulesOnce = () => {
 // (handoff[id][1]), so a reply goes in the short thread form only to the session that already has its thread.
 const whoOf = (s) => s?.id || s?.name || '';
 // What people wrote that no wait has been handed yet.
-const freshIn = (scope) => scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
+// A pin sent with +board (its board opens as it goes, src/comments.js) waits until the person closes that board (or 20
+// minutes), so the agent gets it with what was put on it, not before.
+const filled = new Set(); // ids of +board pins whose board was closed
+const filling = (c) => !c.parent && /^\+board\b/.test(c.anchor?.act || '') && !filled.has(c.id) && Date.now() - Date.parse(c.createdAt) < 1200000;
+const freshIn = (scope) => scope.flatMap((page) => commentsOf(page).filter((c) => !c.session && !(c.resolved && !c.parent) && !filling(c) && stamp(c) > (handoff[c.id]?.[0] || seen)).map((c) => ({ page, c })));
 async function unseen(scope = pages(), who = '') {
   const fresh = freshIn(scope);
   // A safety net: threads handed over more than 3 minutes ago that still have no answer after the person's last
@@ -2219,6 +2223,12 @@ const boardApi = async (req, res, url) => {
   if (req.method === 'POST') {
     if (!isAgent(req) && !(isLoopback(req) && keyOk(req))) return plain(res, 403, 'forbidden');
     const b = await sent(req);
+    // A pin's board closed (its +board pin goes to the agent now, with what is on it).
+    if (b.action === 'ready') {
+      if (/^pin-[0-9a-f]{12}$/.test(String(b.name))) filled.add(String(b.name).slice(4));
+      wake();
+      return json(200, { ok: true });
+    }
     const env = { root: ROOT, origin, proxied: Boolean(PROXY), open: (key) => commentsOf(key).filter((c) => !c.parent && !c.resolved).length, titleOf: (p) => { const f = fileFor(boardPage(p)); return f ? titleOf(path.join(ROOT, f)) : ''; }, fileOf: (p) => fileFor(boardPage(p)) };
     const out = act.act(String(b.action), b, env);
     boardCache.clear();
