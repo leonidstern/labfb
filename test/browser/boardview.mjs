@@ -97,13 +97,17 @@ try {
       await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board'), null, { timeout: 6000 });
       await sleep(500);
       await p.mouse.wheel(0, 600); // over the board: pans it, never the page
-      await sleep(200);
+      await sleep(400);
+      const camLeft = await p.evaluate(() => window.__labBoard.camera());
       await p.keyboard.press('Escape');
       await sleep(500);
       const after = await p.evaluate(() => ({ y: scrollY, view: Boolean(document.querySelector('[data-lab-board-view]')), hash: location.hash }));
       check(eng, 'Esc closes it and the page is where it was scrolled', !after.view && !after.hash && Math.abs(after.y - y2) < 2 && p.url() === url0, JSON.stringify({ ...after, y2, y1, y0 }));
       await p.click('#go');
       await p.waitForFunction(() => document.querySelector('[data-lab-board-view]')?.shadowRoot?.querySelector('#lab-board'), null, { timeout: 6000 });
+      await sleep(600);
+      const camBack = await p.evaluate(() => window.__labBoard.camera());
+      check(eng, 'opened again, the board is at the zoom and place it was left at (Leo, 21 Nov: "closing/opening board drawer should not move zoom/position inside board")', Math.abs(camBack.z - camLeft.z) < 1e-3 && Math.abs(camBack.x - camLeft.x) < 1.5 && Math.abs(camBack.y - camLeft.y) < 1.5, JSON.stringify([camLeft, camBack]));
       await p.goBack();
       await sleep(500);
       const back = await p.evaluate(() => ({ y: scrollY, view: Boolean(document.querySelector('[data-lab-board-view]')), path: location.pathname }));
