@@ -203,6 +203,7 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
   };
   // The camera goes to next, held to the board's edges: past an edge it just stops (Leo, 19 Nov: "remove weird bounce
   // on edge of canvas": it gave way and sprang back). pan: a move that keeps a fitted frame's focus (a phone's swipe).
+  let nudging = 0; // the camera's glide to a draft pin (api.nudge)
   const go = (next: Cam, user = true, pan = false) => {
     const c = clamp(next, boxes(), view);
     if (user) moved = true;
@@ -761,9 +762,20 @@ export function mountBoard(root: HTMLElement, name: string, opts: MountOpts = {}
     camera: () => ({ ...cam }),
     /** The camera moves by dy screen px (the keyboard is up: a draft pin comes above its sheet); answers how far it did go (it stops at the board's edges). */
     nudge: (dy: number) => {
-      const was = cam.y;
-      go({ ...cam, y: cam.y + dy / cam.z }, false, true);
-      return Math.round((cam.y - was) * cam.z);
+      const from = cam.y;
+      const to = clamp({ ...cam, y: cam.y + dy / cam.z }, boxes(), view).y;
+      cancelAnimationFrame(nudging);
+      // It glides (ease in and out, longer for a longer way), not one frame (Leo, 21 Nov: "scrolling position to pin can be smoother").
+      const ms = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : Math.min(420, 180 + Math.abs(to - from) * cam.z * 0.5);
+      const t0 = performance.now();
+      const step = (now: number) => {
+        if (signal.aborted) return;
+        const k = ms ? 1 : Math.min(1, (now - t0) / ms);
+        go({ ...cam, y: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2) }, false, true);
+        nudging = k < 1 ? requestAnimationFrame(step) : 0;
+      };
+      step(t0);
+      return Math.round((to - from) * cam.z);
     },
     selected: () => selected,
     entered: () => entered,

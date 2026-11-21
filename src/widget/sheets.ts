@@ -205,8 +205,26 @@ export function scrollPageTo(top: number) {
     de.style.setProperty('--lab-room', `${room}px`);
     de.classList.toggle('lab-room', room > 0);
   }
-  scrollTo({ top: Math.max(0, top), behavior: W.still.matches ? 'auto' : 'smooth' });
+  const to = Math.max(0, top);
+  cancelAnimationFrame(glideId);
+  if (W.still.matches || Math.abs(to - scrollY) < 2) return scrollTo({ top: to, behavior: 'auto' });
+  // Its own glide, ease in and out and longer for a longer way: the browser's smooth scroll took 0.28 s for 500 px, which
+  // reads as a jump (Leo, 21 Nov: "scrolling position to pin can be smoother"). A touch or a wheel hands the page back.
+  const from = scrollY;
+  const ms = Math.min(560, 220 + Math.abs(to - from) * 0.45);
+  const t0 = performance.now();
+  const stop = () => (cancelAnimationFrame(glideId), removeEventListener('touchstart', stop), removeEventListener('wheel', stop));
+  addEventListener('touchstart', stop, { passive: true });
+  addEventListener('wheel', stop, { passive: true });
+  const step = (now: number) => {
+    const k = Math.min(1, (now - t0) / ms);
+    scrollTo({ top: from + (to - from) * (k < 0.5 ? 4 * k ** 3 : 1 - (-2 * k + 2) ** 3 / 2), behavior: 'instant' });
+    if (k < 1) glideId = requestAnimationFrame(step);
+    else stop();
+  };
+  glideId = requestAnimationFrame(step);
 }
+let glideId = 0;
 
  // CloseWatcher (not in TypeScript's DOM types yet)
 export function backCloses() {
