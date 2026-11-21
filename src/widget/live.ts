@@ -318,6 +318,7 @@ export function startLive() {
     // moves or closes. The saved file's own <link>s, or every same-site one when it's pulled in another way (@import).
     let swapN = 0;
     const swapCss = (files) => {
+      if (restyled) return reload(); // a sheet loaded again would bring the old picture's address back
       // A clone still loading from an earlier save is skipped (its original is swapped instead) and dropped once a newer one is in.
       const links = [...(document.querySelectorAll('link[rel~="stylesheet"][href]:not([data-lab-swap])') as NodeListOf<HTMLLinkElement>)].filter((l) => new URL(l.href, location.href).origin === location.origin);
       const own = (l: HTMLLinkElement) => decodeURIComponent(new URL(l.href, location.href).pathname);
@@ -366,8 +367,13 @@ export function startLive() {
           const next = fresh(v.split('#')[0]);
           (n as any)['lab' + attr] = next;
           const im = new Image();
+          const ready = new Promise((ok) => ((im.onload = () => ok(true)), (im.onerror = () => ok(false))));
           im.src = next;
-          (im.decode ? im.decode() : Promise.resolve()).catch(() => {}).finally(() => (n as any)['lab' + attr] === next && n.setAttribute(attr, next + (v.includes('#') ? v.slice(v.indexOf('#')) : '')));
+          // A file that is not there (deleted, about to be written again) leaves the old picture showing.
+          void ready.then(async (ok) => {
+            if (ok) await im.decode?.().catch(() => {});
+            if (ok && (n as any)['lab' + attr] === next) n.setAttribute(attr, next + (v.includes('#') ? v.slice(v.indexOf('#')) : ''));
+          });
           hit++;
         }
         const set = n.getAttribute('srcset');
@@ -379,6 +385,46 @@ export function startLive() {
           hit++;
         }
       }
+      return hit;
+    };
+    // A picture only a stylesheet shows (a CSS background, a ::before, a variable): the browser keeps its copy under the old address,
+    // so every url() in the page's CSS that names it gets a new version, in place. The next save of a stylesheet loads the old address
+    // again, so that one reloads the page (`restyled`).
+    let restyled = false;
+    const restyle = (paths) => {
+      let hit = 0;
+      const fix = (text, base) =>
+        text.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (m, _q, u) => {
+          try {
+            const abs = new URL(u, base).href;
+            return samePath(abs.split('#')[0], paths) ? (hit++, `url("${fresh(abs)}")`) : m;
+          } catch {
+            return m;
+          }
+        });
+      const walk = (rules, base) => {
+        for (const r of rules || []) {
+          try {
+            const css = r.style?.cssText;
+            if (css && css.includes('url(')) {
+              const t = fix(css, base);
+              if (t !== css) r.style.cssText = t;
+            }
+            if (r.styleSheet) walk(r.styleSheet.cssRules, r.styleSheet.href || base);
+            else walk(r.cssRules, base);
+          } catch {} // another site's sheet, or a rule that can't be read
+        }
+      };
+      for (const sheet of document.styleSheets) {
+        try {
+          if (!W.host.contains(sheet.ownerNode as Node)) walk(sheet.cssRules, sheet.href || location.href);
+        } catch {} // another site's sheet
+      }
+      for (const n of document.querySelectorAll('[style*="url("]')) {
+        const t = W.host.contains(n) ? '' : fix(n.getAttribute('style'), location.href);
+        if (t && t !== n.getAttribute('style')) n.setAttribute('style', t);
+      }
+      if (hit) restyled = true;
       return hit;
     };
     // A font: each @font-face that uses it is loaded again as a new face, which takes over from the old one.
@@ -570,9 +616,9 @@ export function startLive() {
       const here = decodeURIComponent(location.pathname).replace(/\/$/, '/index').replace(/\.html?$/i, '').toLowerCase();
       if (of('html').some((p) => !p || p.replace(/\.html?$/i, '').toLowerCase() === here)) morphPage();
       else if (of('html').some((p) => loaded(p, /fetch|xml/))) reload(); // a page a script fetched
-      if (of('css').length) swapCss(of('css'));
-      // A picture only a stylesheet shows (a CSS background) can't be swapped: the browser keeps its copy of the picture, so the page reloads.
-      if (of('img').length && !swapImages(of('img')) && of('img').some((p) => loaded(p))) reload();
+      // A picture only a stylesheet shows (a CSS background): its addresses in the CSS get a new version; when none is found but the page loaded it, it reloads.
+      if (of('img').length && !swapImages(of('img')) && !restyle(of('img')) && of('img').some((p) => loaded(p))) reload();
+      if (of('css').length) swapCss(of('css')); // after the pictures: one that was restyled makes this a reload
       if (of('font').length) reloadFonts(of('font'));
     };
     // One live stream per browser for this lab, shared by its tabs: the tab holding the lock "labit-live" (locks and
